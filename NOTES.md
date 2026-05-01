@@ -5,9 +5,11 @@ assumption, or would be useful to future-me.
 
 ## Open questions for the spike (Unit 1)
 
-- [ ] **Round-0 variance.** With seeded prompts (`warm lighting` /
-      `cool lighting`), do A and B differ visibly? If not, sharpen
-      the seeds — the whole product depends on visible variance.
+- [ ] **Round-0 variance / jitter need.** Run with the bare prompt.
+      Do A and B differ visibly on their own? If yes, no jitter
+      needed. If not, edit `spike.py` to append distinct semantic
+      modifiers (e.g. `, warm lighting` / `, cool lighting`) — note
+      that the jitter axis frames what dimension A vs B is asking.
 - [ ] **Channel agreement.** On 5 hand-picked obvious A/B pairs,
       does Claude pick the reference channel you'd have picked ≥3
       times? <3/5 trips the go/no-go gate.
@@ -17,8 +19,6 @@ assumption, or would be useful to future-me.
 - [ ] **Cold / p50 latency.** What's a typical round take?
 - [ ] **Luma URL TTL.** Do generated URLs survive ≥30 minutes idle?
       If shorter, README documents the constraint.
-- [ ] **Anthropic model.** Is `claude-sonnet-4-6` still the right
-      default at run time?
 
 ## Findings
 
