@@ -178,6 +178,11 @@ async def choose_ref_channel(
 
 # --- main ---------------------------------------------------------------
 
+# main is async because round 0 fires two Photon calls in parallel via
+# asyncio.gather. Sequentially each ~10–20s; concurrently ~half. The
+# Luma and Anthropic SDKs return coroutines (we use AsyncLumaAI /
+# AsyncAnthropic), which require `await`, which requires `async def`.
+
 
 async def main() -> None:
     print(f"PROMPT: {PROMPT!r}")
