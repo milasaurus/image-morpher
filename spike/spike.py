@@ -185,6 +185,8 @@ async def main() -> None:
 
     print("Round 0: generating A and B in parallel…")
     t0 = time.monotonic()
+    # a_url and b_url are public Luma CDN URLs to the images Photon
+    # just generated — Claude fetches them directly in the next step.
     a_url, b_url = await asyncio.gather(
         generate(PROMPT),
         generate(PROMPT),
