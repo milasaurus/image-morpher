@@ -1,4 +1,4 @@
-"""image-morpher spike — round 0 → lever → round 1, end-to-end.
+"""image-morpher spike — round 0 → reference channel → round 1.
 
 Validates the core hypothesis (LLM picks the right Luma reference
 channel from the user's preference signal) before any backend code.
@@ -6,12 +6,12 @@ See `docs/plan.md` Unit 1 for the rationale.
 
 Run:
 
-    cd spike && uv sync && cp .env.example .env  # add API keys
+    cd spike && uv sync
     uv run python spike.py
 
-The default winner is B; set WINNER=A in .env to flip. Re-run with
-different prompts and pick decisions to gather the lever-agreement
-data Unit 1's gate needs.
+Reads `LUMAAI_API_KEY` and `ANTHROPIC_API_KEY` from the OS env. The
+default winner is B; set `WINNER=A` to flip. Other knobs (prompt,
+model, weights) are likewise OS env vars — see config block below.
 """
 
 from __future__ import annotations
@@ -28,7 +28,12 @@ from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from lumaai import AsyncLumaAI
 
-load_dotenv()
+from system_prompt import SYSTEM_PROMPT
+
+# API keys come from the OS env. Per-run knobs (WINNER, SPIKE_PROMPT,
+# weights) can be set in .env if you don't want to export them; existing
+# OS env vars take precedence.
+load_dotenv(override=False)
 
 # --- config -------------------------------------------------------------
 
@@ -36,20 +41,22 @@ PROMPT = os.environ.get("SPIKE_PROMPT", "a vintage typewriter on a wooden desk")
 PHOTON_MODEL = os.environ.get("PHOTON_MODEL", "photon-1")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
-# Prompt jitter, not a reproducibility seed (Photon exposes no public
-# seed parameter). Text appended to each round-0 prompt to force the
-# two parallel calls to land on different points in latent space when
-# the bare prompt would return near-identical pairs. The text choice
-# also frames the axis of variation A vs B is choosing on — pick
-# carefully.
-SEED_A = os.environ.get("SEED_A", "warm lighting")
-SEED_B = os.environ.get("SEED_B", "cool lighting")
+# Round 0 calls Photon twice with the same prompt. If the pair comes
+# back near-identical, the loop has no A/B signal — at that point edit
+# this file to add prompt jitter (e.g. ", warm lighting" vs ", cool
+# lighting"). The jitter axis you pick frames what dimension the user
+# is voting on, so it's a deliberate edit, not a knob.
 
-# Per-lever weight defaults (the spike calibrates `style_ref` at
+# Per-channel weight defaults (the spike calibrates `style_ref` at
 # 0.4 / 0.6 / 0.8 by re-running with WEIGHT_STYLE_REF set).
 WEIGHT_STYLE_REF = float(os.environ.get("WEIGHT_STYLE_REF", "0.55"))
 WEIGHT_MODIFY_IMAGE_REF = float(os.environ.get("WEIGHT_MODIFY_IMAGE_REF", "0.85"))
 
+# Photon's image API is async: create() enqueues a job and returns
+# immediately; we poll generations.get() until state == "completed".
+# POLL_INTERVAL is how often to check (seconds); POLL_TIMEOUT is the
+# overall deadline before raising GenerationTimeout. Photon usually
+# completes in 10–20s, so 180s is a generous safety net for stuck jobs.
 POLL_INTERVAL = 2.0
 POLL_TIMEOUT = 180.0
 
@@ -67,13 +74,13 @@ class GenerationTimeout(Exception):
 
 # --- types --------------------------------------------------------------
 
-Lever = Literal["style_ref", "character_ref", "modify_image_ref"]
+RefChannel = Literal["style_ref", "character_ref", "modify_image_ref"]
 
 
 @dataclass
-class LeverChoice:
+class RefChannelChoice:
     rationale: str
-    lever: Lever
+    ref_channel: RefChannel
     instruction: str
 
 
@@ -103,61 +110,41 @@ async def generate(prompt: str, **refs) -> str:
         await asyncio.sleep(POLL_INTERVAL)
 
 
-async def generate_with_lever(choice: LeverChoice, anchor_url: str) -> str:
-    """Apply the lever's reference channel to a fresh Photon call.
+async def generate_with_ref_channel(
+    choice: RefChannelChoice, anchor_url: str
+) -> str:
+    """Apply the chosen reference channel to a fresh Photon call.
 
     `character_ref` has no weight field in the SDK; silently exempt.
     """
-    if choice.lever == "style_ref":
+    if choice.ref_channel == "style_ref":
         return await generate(
             choice.instruction,
             style_ref=[{"url": anchor_url, "weight": WEIGHT_STYLE_REF}],
         )
-    if choice.lever == "character_ref":
+    if choice.ref_channel == "character_ref":
         return await generate(
             choice.instruction,
             character_ref={"identity0": {"images": [anchor_url]}},
         )
-    if choice.lever == "modify_image_ref":
+    if choice.ref_channel == "modify_image_ref":
         return await generate(
             choice.instruction,
             modify_image_ref={"url": anchor_url, "weight": WEIGHT_MODIFY_IMAGE_REF},
         )
-    raise ValueError(f"unknown lever: {choice.lever}")
+    raise ValueError(f"unknown reference channel: {choice.ref_channel}")
 
 
-# --- Claude lever picker ------------------------------------------------
+# --- Claude reference-channel picker ------------------------------------
 
 claude = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-
-SYSTEM_PROMPT = """\
-You're helping refine an image generation. The user picked image B over
-image A; both were generated from the same text prompt. Reason briefly
-about what's better in B, then propose ONE refinement for the next round.
-
-Choose exactly one of these reference channels:
-- style_ref: preserve B's visual style, allow subject variation.
-- character_ref: preserve B's subject identity, allow scene variation.
-- modify_image_ref: surgical edit on B following a text instruction.
-
-The "instruction" you return becomes the literal text prompt for the
-next image generation. It MUST be a self-contained image-generation
-prompt (e.g. "a vintage typewriter on a wooden desk in moodier lighting"),
-NEVER a constraint description like "preserve B's mood with a similar
-subject" — those become the literal Photon prompt and lose the subject.
-
-Output JSON only, exactly this shape:
-{
-  "rationale": "<1-2 sentences on why B won>",
-  "lever": "style_ref" | "character_ref" | "modify_image_ref",
-  "instruction": "<self-contained text prompt for the next generation>"
-}
-"""
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
-async def choose_lever(prompt: str, winner_url: str, loser_url: str) -> LeverChoice:
+async def choose_ref_channel(
+    prompt: str, winner_url: str, loser_url: str
+) -> RefChannelChoice:
     msg = await claude.messages.create(
         model=ANTHROPIC_MODEL,
         max_tokens=600,
@@ -182,9 +169,9 @@ async def choose_lever(prompt: str, winner_url: str, loser_url: str) -> LeverCho
     if not m:
         raise ValueError(f"no JSON in LLM response: {text!r}")
     data = json.loads(m.group(0))
-    return LeverChoice(
+    return RefChannelChoice(
         rationale=data["rationale"],
-        lever=data["lever"],
+        ref_channel=data["ref_channel"],
         instruction=data["instruction"],
     )
 
@@ -196,14 +183,13 @@ async def main() -> None:
     print(f"PROMPT:           {PROMPT!r}")
     print(f"Photon model:     {PHOTON_MODEL}")
     print(f"Anthropic model:  {ANTHROPIC_MODEL}")
-    print(f"Round-0 seeds:    A={SEED_A!r}  B={SEED_B!r}")
     print()
 
     print("Round 0: generating A and B in parallel…")
     t0 = time.monotonic()
     a_url, b_url = await asyncio.gather(
-        generate(f"{PROMPT}, {SEED_A}"),
-        generate(f"{PROMPT}, {SEED_B}"),
+        generate(PROMPT),
+        generate(PROMPT),
     )
     elapsed = time.monotonic() - t0
     print(f"  A: {a_url}")
@@ -219,25 +205,25 @@ async def main() -> None:
     print(f"Winner (set WINNER=A or =B in .env to override): {winner_label}")
     print()
 
-    print("Asking Claude to pick a lever…")
+    print("Asking Claude to pick a reference channel…")
     t1 = time.monotonic()
-    choice = await choose_lever(PROMPT, winner_url, loser_url)
+    choice = await choose_ref_channel(PROMPT, winner_url, loser_url)
     elapsed = time.monotonic() - t1
-    print(f"  Rationale:   {choice.rationale}")
-    print(f"  Lever:       {choice.lever}")
-    print(f"  Instruction: {choice.instruction!r}")
+    print(f"  Rationale:    {choice.rationale}")
+    print(f"  Ref channel:  {choice.ref_channel}")
+    print(f"  Instruction:  {choice.instruction!r}")
     print(f"  Claude elapsed: {elapsed:.1f}s")
     print()
 
-    print(f"Round 1: generating new B with lever={choice.lever}…")
+    print(f"Round 1: generating new B with ref_channel={choice.ref_channel}…")
     t2 = time.monotonic()
-    new_b = await generate_with_lever(choice, anchor_url=winner_url)
+    new_b = await generate_with_ref_channel(choice, anchor_url=winner_url)
     elapsed = time.monotonic() - t2
     print(f"  New B: {new_b}")
     print(f"  Round 1 elapsed: {elapsed:.1f}s")
     print()
     print("Open in a browser. Compare new B to the winner.")
-    print("Did the lever feel like the right choice?")
+    print("Did the reference channel feel like the right choice?")
 
 
 if __name__ == "__main__":

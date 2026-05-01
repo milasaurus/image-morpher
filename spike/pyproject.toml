@@ -1,7 +1,7 @@
 [project]
 name = "image-morpher-spike"
 version = "0.0.1"
-description = "Single-file spike validating the round-0 → lever → round-1 loop."
+description = "Single-file spike validating the round-0 → reference-channel → round-1 loop."
 requires-python = ">=3.11"
 dependencies = [
     "lumaai>=1.21,<2",

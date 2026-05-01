@@ -49,9 +49,9 @@ prefers image B over image A, the *interesting* product problem is:
   text diff
 - "I like B's whole vibe" → `image_ref` from B with high weight
 
-An LLM proposes the lever. The user can override. The build will
-surface real findings about when this routing is right and when it
-isn't.
+An LLM proposes the reference channel. The user can override. The
+build will surface real findings about when this routing is right and
+when it isn't.
 
 ## MVP scope (what ships)
 
@@ -63,15 +63,15 @@ The single bet: **anchored A/B refinement loop on a single image.**
 - Anchored loop: winner persists as A, one new candidate generated as
   B each subsequent round
 - LLM reasoning step per round: given (prompt, current winner, last
-  loser), output JSON `{rationale, lever, instruction}` where
-  lever ∈ {style_ref, character_ref, modify_image_ref}. Per-lever
-  weight defaults live in backend config, calibrated empirically
-  (logged in NOTES.md), *not* asked of the LLM — it has never seen
-  what 0.3 vs 0.7 looks like on Luma.
-- LLM lever and rationale revealed *after* B generates (subtitle on B,
-  e.g. *"Went with `style_ref` because: …"*). Override dropdown applies
-  to the *next* round, not the current one — the user's escape hatch
-  when Claude misroutes.
+  loser), output JSON `{rationale, ref_channel, instruction}` where
+  `ref_channel ∈ {style_ref, character_ref, modify_image_ref}`.
+  Per-channel weight defaults live in backend config, calibrated
+  empirically (logged in NOTES.md), *not* asked of the LLM — it has
+  never seen what 0.3 vs 0.7 looks like on Luma.
+- Chosen reference channel and rationale revealed *after* B generates
+  (subtitle on B, e.g. *"Went with `style_ref` because: …"*). Override
+  dropdown applies to the *next* round, not the current one — the
+  user's escape hatch when Claude misroutes.
 - "Done" button → PNG download.
 - README with `uv run` (backend) + `npm run dev` (frontend) setup.
 - `NOTES.md` capturing weird findings as I build.
@@ -86,11 +86,12 @@ The single bet: **anchored A/B refinement loop on a single image.**
 - Speculative pre-generation of round N+1 to mask latency
   (interesting if 8-15 round sessions feel slow; YAGNI for MVP)
 - **Preference chip** (`mood` / `subject` / `composition` / `bolder`)
-  feeding the lever prompt — was insurance against an unproven risk;
-  add only if Unit 6 shows the LLM-alone path is wobbly.
+  feeding the reference-channel prompt — was insurance against an
+  unproven risk; add only if Unit 6 shows the LLM-alone path is
+  wobbly.
 - **"Both bad" re-roll button** — escape hatch; substitute is "pick
-  the less-bad one and override the lever for next round".
-- **History rail** with thumbnails + lever badges — visual progress
+  the less-bad one and override the reference channel for next round".
+- **History rail** with thumbnails + channel badges — visual progress
   indicator; the active pair is the only thing that affects outcomes.
 
 ### Fast-follow (v2 candidates after the prototype ships)
@@ -111,8 +112,9 @@ Both options were on the table. Anchored wins because:
 
 - React frontend (Vite, no SSR), TypeScript
 - Python backend (FastAPI), Luma Python SDK (`lumaai>=1.21`)
-- Anthropic Python SDK (`anthropic`) for the lever-selection reasoning
-  step, vision-capable model so it can see both images
+- Anthropic Python SDK (`anthropic`) for the reference-channel
+  selection reasoning step, vision-capable model so it can see both
+  images
 - No hosted infra — anyone can clone and run with their own keys
 - Personal GitHub repo
 
@@ -125,16 +127,17 @@ end-to-end before committing to UI. See `spike/spike.py`:
 
 1. Hardcode a prompt
 2. Call Photon twice in parallel, get two image URLs
-3. Call Claude with both URLs + the prompt, get back the lever JSON
+3. Call Claude with both URLs + the prompt, get back the
+   reference-channel JSON
 4. Use the JSON to construct the next Photon call (round 1)
 5. Print everything to console
-6. On 5 hand-picked obvious A/B pairs, eyeball whether Claude's lever
-   pick agrees ≥3 times.
+6. On 5 hand-picked obvious A/B pairs, eyeball whether Claude's
+   channel pick agrees ≥3 times.
 
-Go/no-go gate: ≥3/5 lever agreement. If the LLM is shakier than that,
-sharpen the prompt, pivot the README narrative ("why this is harder
-than it looks"), or demote the LLM step to a simpler A/B refiner —
-better to learn this on Day 0 than Sunday of Weekend 2.
+Go/no-go gate: ≥3/5 channel agreement. If the LLM is shakier than
+that, sharpen the prompt, pivot the README narrative ("why this is
+harder than it looks"), or demote the LLM step to a simpler A/B
+refiner — better to learn this on Day 0 than Sunday of Weekend 2.
 
 Loop convergence is judged by *using* the prototype during Weekend
 1/2, not by experiments here.
@@ -145,12 +148,13 @@ Loop convergence is judged by *using* the prototype during Weekend
   `POST /generate` endpoint that does two parallel calls via
   `asyncio.gather`. React skeleton with prompt input and A/B
   display. Click-to-pick. End of day: round 0 works manually.
-- Day 2: LLM reasoning step. Lever selection. Round N logic. End of
-  weekend: full loop works end-to-end, ugly but functional.
+- Day 2: LLM reasoning step. Reference-channel selection. Round N
+  logic. End of weekend: full loop works end-to-end, ugly but
+  functional.
 
 ### 2 — polish + ship
 
-- Day 1: Lever override UI, "Done" → PNG export, README.
+- Day 1: Reference-channel override UI, "Done" → PNG export, README.
 - Day 2: NOTES.md cleanup, edge cases (API failures, slow
   generations), deploy-free path (`uv run` for backend +
   `npm run dev` for frontend), ship.
@@ -198,13 +202,13 @@ The brain of the system is one LLM call per round. Tight contract:
 > Output JSON only:
 > {
 >   "rationale": "<1-2 sentences on why B won>",
->   "lever": "style_ref" | "character_ref" | "modify_image_ref",
+>   "ref_channel": "style_ref" | "character_ref" | "modify_image_ref",
 >   "instruction": "<text instruction for the next generation>"
 > }
 
 The JSON output deterministically routes to the correct Luma API
 call construction in the backend. `weight` is *not* asked of the LLM
-— per-lever defaults live in backend config (calibrated empirically;
+— per-channel defaults live in backend config (calibrated empirically;
 see open question #2).
 
 ## Reference: Luma API capabilities used

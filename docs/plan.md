@@ -43,14 +43,14 @@ code plus the findings logged in `NOTES.md`.
 
 **LLM reasoning**
 
-- **R4.** LLM lever-selection per round, returning JSON
-  `{rationale, lever, instruction}` with `lever ∈ {style_ref,
-  character_ref, modify_image_ref}`. Per-lever weight defaults live in
-  config (Decision 3).
-- **R5.** LLM lever and rationale revealed *after* B generates,
-  surfaced via plain-language label (Decision 6). Override dropdown
-  applies to the next round, not the current one — the user's escape
-  hatch when Claude misroutes.
+- **R4.** LLM reference-channel selection per round, returning JSON
+  `{rationale, ref_channel, instruction}` with `ref_channel ∈
+  {style_ref, character_ref, modify_image_ref}`. Per-channel weight
+  defaults live in config (Decision 3).
+- **R5.** Chosen reference channel and rationale revealed *after* B
+  generates, surfaced via plain-language label (Decision 6). Override
+  dropdown applies to the next round, not the current one — the
+  user's escape hatch when Claude misroutes.
 
 **Ship and findings**
 
@@ -80,11 +80,11 @@ Cut from a wider draft, parked as v2 candidates if the MVP earns
 them:
 
 - **Preference chip** (`mood` / `subject` / `composition` / `bolder`)
-  feeding the lever prompt — was insurance against an unproven risk;
+  feeding the reference-channel prompt — was insurance against an unproven risk;
   add only if Unit 6 shows the LLM-alone path is wobbly.
 - **"Both bad" re-roll button** — escape hatch; substitute is "pick
   the less-bad one and override for next round", or click Done.
-- **History rail** with thumbnails + lever badges — visual progress
+- **History rail** with thumbnails + channel badges — visual progress
   indicator; the active pair is the only thing that affects outcomes.
 - **Demo GIF in the README** — fast-follow once the prototype ships;
   record a 10-pick session and embed at the top of `README.md`.
@@ -129,10 +129,10 @@ Sunday-afternoon-when-scope-creep-is-loud rules:
 1. **Single endpoint.** `POST /api/round` handles both round-0 and
    round-N off the request shape (`winner_url is None` → round 0).
    Cuts duplicate client logic.
-2. **Override skips Claude.** Synthetic `LeverChoice` built from the
+2. **Override skips Claude.** Synthetic `RefChannelChoice` built from the
    request; no LLM call. Acceptable cost: override mode produces
    near-identical outputs round-over-round (only the channel changes).
-3. **`weight` is not asked of the LLM.** Per-lever defaults in
+3. **`weight` is not asked of the LLM.** Per-channel defaults in
    `config.py`: `WEIGHT_STYLE_REF` (initial 0.55, refined in Unit 1)
    and `WEIGHT_MODIFY_IMAGE_REF` (0.85). `character_ref` has no
    weight in the SDK and is silently exempt.
@@ -143,17 +143,20 @@ Sunday-afternoon-when-scope-creep-is-loud rules:
    becomes the literal Photon prompt and loses the original subject.
 5. **Round-N response carries only the new B URL.** Frontend retains
    the prior winner from local state. Backend is stateless.
-6. **Plain-language lever labels in the UI.** `style_ref` → "Keep the
-   look", `character_ref` → "Keep the subject", `modify_image_ref` →
-   "Tweak it". Translation table in
-   `web/src/components/LeverSubtitle.tsx`. API strings never reach
-   the user.
+6. **Plain-language reference-channel labels in the UI.** `style_ref`
+   → "Keep the look", `character_ref` → "Keep the subject",
+   `modify_image_ref` → "Tweak it". Translation table in
+   `web/src/components/RefChannelSubtitle.tsx`. API strings never
+   reach the user.
 ## Open questions to validate while building
 
-- **Round-0 variance.** Does Photon return materially different
-  images on identical prompts? If not, append distinct semantic
-  seeds (`"warm lighting"` / `"cool lighting"`) — neutral nonces may
-  collapse to the same latent.
+- **Round-0 variance / jitter need.** Does Photon return materially
+  different images on identical prompts? The spike defaults to the
+  bare prompt twice; if A and B come back near-identical, edit the
+  spike to append distinct semantic modifiers (e.g. `, warm lighting`
+  / `, cool lighting`). Two gotchas: neutral nonces may collapse to
+  the same latent, and the jitter axis you pick frames what dimension
+  A vs B is asking the user to vote on — pick deliberately.
 - **`style_ref` weight calibration.** What value feels like "carry
   the vibe" vs "near-duplicate"? Calibrate empirically; bake into
   `config.py`.
@@ -181,14 +184,14 @@ sequenceDiagram
     A->>L: generate(prompt + "A seed")
     A->>L: generate(prompt + "B seed")
   end
-  A-->>W: { images: [A, B], lever: null }
+  A-->>W: { images: [A, B], ref_channel: null }
 
   U->>W: click winner (B)
   W->>A: POST /api/round { prompt, winner=B, loser=A }
-  A->>C: choose_lever(prompt, B, A)
-  C-->>A: { rationale, lever, instruction }
-  A->>L: generate(instruction, ref=lever→B, weight=config_default)
-  A-->>W: { images: [newB], lever: {...} }
+  A->>C: choose_ref_channel(prompt, B, A)
+  C-->>A: { rationale, ref_channel, instruction }
+  A->>L: generate(instruction, ref=channel→B, weight=config_default)
+  A-->>W: { images: [newB], ref_channel: {...} }
 
   U->>W: click "Done"
   W->>U: download PNG
@@ -211,9 +214,9 @@ resets after each round-N submit.
 
 ### Unit 1: Spike (Day 0 precondition)
 
-Single-file Python spike. Validates the round-0 → lever → round-1
-loop end-to-end before any backend code. Acts as the go/no-go gate
-on the core hypothesis.
+Single-file Python spike. Validates the round-0 → reference-channel
+→ round-1 loop end-to-end before any backend code. Acts as the
+go/no-go gate on the core hypothesis.
 
 Files: `spike/spike.py`, `spike/pyproject.toml`, `spike/.env.example`,
 `spike/README.md`, `NOTES.md`.
@@ -222,10 +225,11 @@ Approach:
 
 - Hardcode a prompt; call Photon twice in parallel; print both URLs.
 - Confirm round-0 variance is visually meaningful. If A and B look
-  near-identical, edit to use distinct semantic seeds (`"warm
-  lighting"` for A, `"cool lighting"` for B).
-- On 5 hand-picked A/B pairs where the right lever feels obvious to
-  you, check whether Claude agrees ≥3 times.
+  near-identical on the bare prompt, edit the spike to append
+  distinct semantic modifiers to each call (jitter — see Open
+  Questions).
+- On 5 hand-picked A/B pairs where the right channel feels obvious
+  to you, check whether Claude agrees ≥3 times.
 - Calibrate `WEIGHT_STYLE_REF` at 0.4 / 0.6 / 0.8; pick whichever
   felt like "carry the vibe" without near-duplication. Bake into
   `config.py` in Unit 2; log the trio in `NOTES.md`.
@@ -238,10 +242,10 @@ Units 5/6.
 
 Verification (go/no-go):
 
-- ≥3/5 lever agreement on hand-picked obvious cases. If <3/5, decide
-  before Unit 2: sharpen the prompt, pivot the README narrative, or
-  demote the LLM step to a simpler A/B refiner.
-- `NOTES.md` logs round-0 variance, lever agreement count, weight
+- ≥3/5 channel agreement on hand-picked obvious cases. If <3/5,
+  decide before Unit 2: sharpen the prompt, pivot the README
+  narrative, or demote the LLM step to a simpler A/B refiner.
+- `NOTES.md` logs round-0 variance, channel agreement count, weight
   trio, cold/p50 latency, URL TTL, model status.
 
 ---
@@ -269,10 +273,10 @@ Approach:
   - `async def generate(prompt, **refs) -> str`. Polls every 2s,
     180s overall timeout. Raises `GenerationFailed` /
     `GenerationTimeout`.
-  - `async def generate_with_lever(lever_choice, anchor_url) -> str`.
+  - `async def generate_with_ref_channel(ref_channel_choice, anchor_url) -> str`.
     Channel-shape mapping: `style_ref` → list, `character_ref` →
-    identity dict (no weight), `modify_image_ref` → dict. Per-lever
-    weight from `settings`. Always sends `lever_choice.instruction`
+    identity dict (no weight), `modify_image_ref` → dict. Per-channel
+    weight from `settings`. Always sends `ref_channel_choice.instruction`
     as the Photon `prompt`.
 
 Tests: happy path, generation failure, timeout, the three
@@ -283,35 +287,35 @@ Verification: `uv run pytest` passes; module imports cleanly.
 
 ---
 
-### Unit 3: Pydantic models, lever selection, /api/round endpoint
+### Unit 3: Pydantic models, reference-channel selection, /api/round endpoint
 
 Wire the FastAPI route. Single endpoint dispatches on request shape.
 
-Files: `api/app/{models,lever,main}.py`,
-`api/tests/{test_lever,test_main}.py`.
+Files: `api/app/{models,ref_channel,main}.py`,
+`api/tests/{test_ref_channel,test_main}.py`.
 
 Approach:
 
 - `models.py`:
-  - `Lever = Literal["style_ref", "character_ref", "modify_image_ref"]`
-  - `LeverChoice`: `rationale, lever, instruction` (no
+  - `RefChannel = Literal["style_ref", "character_ref", "modify_image_ref"]`
+  - `RefChannelChoice`: `rationale, ref_channel, instruction` (no
     `weight_suggestion` — Decision 3).
-  - `RoundRequest`: `prompt, winner_url, loser_url, override_lever`.
-  - `RoundResponse`: `images, lever`.
+  - `RoundRequest`: `prompt, winner_url, loser_url, override_ref_channel`.
+  - `RoundResponse`: `images, ref_channel: RefChannelChoice | None`.
   - `ErrorResponse`: `error: Literal[...], detail`.
-- `lever.py`: `async def choose_lever(prompt, winner, loser) ->
-  LeverChoice`. Anthropic SDK; model from `settings.ANTHROPIC_MODEL`.
+- `ref_channel.py`: `async def choose_ref_channel(prompt, winner, loser) ->
+  RefChannelChoice`. Anthropic SDK; model from `settings.ANTHROPIC_MODEL`.
   Robust JSON extraction (regex first `{...}` block).
 - `main.py` `POST /api/round` handles three cases:
   - `winner_url is None` → round 0 (`asyncio.gather` two `generate`
     calls).
-  - `override_lever` set → synthetic `LeverChoice`; skip Claude.
-  - Else → `choose_lever` then `generate_with_lever`.
+  - `override_ref_channel` set → synthetic `RefChannelChoice`; skip Claude.
+  - Else → `choose_ref_channel` then `generate_with_ref_channel`.
 - On failure, return typed `ErrorResponse` with appropriate 5xx.
 
-Tests: lever happy path; lever bad-JSON; endpoint round-0; endpoint
-round-N; endpoint override path skips `choose_lever`; endpoint
-surfaces `GenerationFailed` as 502.
+Tests: channel happy path; channel bad-JSON; endpoint round-0;
+endpoint round-N; endpoint override path skips `choose_ref_channel`;
+endpoint surfaces `GenerationFailed` as 502.
 
 Verification: `uv run pytest` passes; `curl` round-0 returns two URLs.
 
@@ -330,7 +334,7 @@ Files: `web/{package.json, tsconfig.json, vite.config.ts, index.html,
 Approach:
 
 - `npm create vite@latest -- --template react-ts`. Strip boilerplate.
-- `types.ts` mirrors `api/app/models.py` by hand. `LeverChoice` has
+- `types.ts` mirrors `api/app/models.py` by hand. `RefChannelChoice` has
   no `weight_suggestion`.
 - `api.ts` exposes `postRound(req): Promise<RoundResponse>`. On
   non-2xx, parse `ErrorResponse`, throw `Error` carrying the
@@ -351,35 +355,35 @@ backend; `npm run test` passes.
 
 ---
 
-### Unit 5: Round-N flow, lever subtitle, override
+### Unit 5: Round-N flow, reference-channel subtitle, override
 
-Full anchored loop with plain-language lever surfacing and next-round
-override.
+Full anchored loop with plain-language channel surfacing and
+next-round override.
 
 Files: modify `App.tsx`, `ImagePair.tsx`, `styles.css`,
-`App.test.tsx`. Create `LeverSubtitle.tsx` and its test.
+`App.test.tsx`. Create `RefChannelSubtitle.tsx` and its test.
 
 Approach:
 
 - Click winner: set `currentPair.a = winner`, clear `currentPair.b`,
   transition to `generating`. Fire `postRound({prompt, winner, loser,
-  override_lever: pendingOverride})`. Reset `pendingOverride` after
+  override_ref_channel: pendingOverride})`. Reset `pendingOverride` after
   firing.
 - Round-N response: set `currentPair.b = response.images[0]`,
-  `currentLever = response.lever`. Transition to `picking`.
-- `LeverSubtitle`: hidden on round 0 via `visibility: hidden` with
+  `currentRefChannel = response.ref_channel`. Transition to `picking`.
+- `RefChannelSubtitle`: hidden on round 0 via `visibility: hidden` with
   `min-height` (do *not* `display: none` — collapses layout). Round
   N+: plain-language label + rationale truncated to ~140 chars,
   expandable. Override `<select>`: Auto / Keep the look / Keep the
   subject / Tweak it. Pending-override badge when set.
 
-Tests: round-N flow renders new B + lever subtitle; override applies
-to next round; pending override resets after use; clears on "Done";
-LeverSubtitle hidden on round 0; lever-name translation never exposes
-the API string.
+Tests: round-N flow renders new B + channel subtitle; override
+applies to next round; pending override resets after use; clears on
+"Done"; RefChannelSubtitle hidden on round 0; channel-name
+translation never exposes the API string.
 
 Verification: manual loop — pick 10 in a row; loop stays coherent;
-lever subtitle updates each round.
+channel subtitle updates each round.
 
 ---
 
@@ -404,7 +408,7 @@ Approach:
 - Loading polish: skeleton shimmer on placeholder; "Photon's still
   thinking…" tick after 5s.
 - `README.md` (blog-post tone): what this is, who it's for,
-  quickstart, how it works (gradient-descent + lever routing),
+  quickstart, how it works (gradient-descent + reference-channel routing),
   saving your output, what I learned (link to `NOTES.md` with the
   headline finding teased), v2 / out of scope.
 - `NOTES.md` final pass: ≥5 substantive findings. Edit so the
@@ -425,7 +429,7 @@ quickstart works on a fresh clone.
 | Risk | Mitigation |
 |------|------------|
 | Photon returns near-identical images on identical prompts. | Unit 1 validates. Distinct semantic seeds on round 0 if needed. |
-| LLM lever-selection is shaky. | Unit 1 gate: ≥3/5 agreement on obvious cases. If <3/5, sharpen prompt / pivot README narrative / demote LLM step. |
+| LLM reference-channel selection is shaky. | Unit 1 gate: ≥3/5 agreement on obvious cases. If <3/5, sharpen prompt / pivot README narrative / demote LLM step. |
 | Photon latency feels slow at round 12. | Skeleton shimmer + elapsed-seconds tick. If still bad, try `photon-flash-1`. Speculative pre-gen is v2. |
 | Loop oscillates instead of converging. | Note in `NOTES.md` during the Unit 6 smoke. If endemic, document the failure as the headline finding. |
 | Luma URLs expire mid-session. | Unit 1 confirms TTL ≥ ~30 min. README documents it; no proxy. |

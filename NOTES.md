@@ -8,9 +8,9 @@ assumption, or would be useful to future-me.
 - [ ] **Round-0 variance.** With seeded prompts (`warm lighting` /
       `cool lighting`), do A and B differ visibly? If not, sharpen
       the seeds — the whole product depends on visible variance.
-- [ ] **Lever agreement.** On 5 hand-picked obvious A/B pairs, does
-      Claude pick the lever you'd have picked ≥3 times? <3/5 trips
-      the go/no-go gate.
+- [ ] **Channel agreement.** On 5 hand-picked obvious A/B pairs,
+      does Claude pick the reference channel you'd have picked ≥3
+      times? <3/5 trips the go/no-go gate.
 - [ ] **`style_ref` weight.** Run the same anchor at 0.4 / 0.6 / 0.8.
       Which felt like "carry the vibe" without near-duplication?
       That number goes into `api/app/config.py` in Unit 2.
