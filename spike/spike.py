@@ -180,9 +180,7 @@ async def choose_ref_channel(
 
 
 async def main() -> None:
-    print(f"PROMPT:           {PROMPT!r}")
-    print(f"Photon model:     {PHOTON_MODEL}")
-    print(f"Anthropic model:  {ANTHROPIC_MODEL}")
+    print(f"PROMPT: {PROMPT!r}")
     print()
 
     print("Round 0: generating A and B in parallel…")
