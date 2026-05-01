@@ -36,8 +36,12 @@ PROMPT = os.environ.get("SPIKE_PROMPT", "a vintage typewriter on a wooden desk")
 PHOTON_MODEL = os.environ.get("PHOTON_MODEL", "photon-1")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
-# Distinct semantic seeds for round 0; the plan calls these "warm/cool
-# lighting" if Photon returns near-identical pairs on the bare prompt.
+# Prompt jitter, not a reproducibility seed (Photon exposes no public
+# seed parameter). Text appended to each round-0 prompt to force the
+# two parallel calls to land on different points in latent space when
+# the bare prompt would return near-identical pairs. The text choice
+# also frames the axis of variation A vs B is choosing on — pick
+# carefully.
 SEED_A = os.environ.get("SEED_A", "warm lighting")
 SEED_B = os.environ.get("SEED_B", "cool lighting")
 
