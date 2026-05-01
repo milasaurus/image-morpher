@@ -23,7 +23,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
@@ -95,6 +95,16 @@ class RefChannelChoice:
     rationale: str
     ref_channel: RefChannel
     instruction: str
+
+    def __post_init__(self) -> None:
+        # The Literal isn't enforced at runtime by dataclass; the LLM
+        # could return anything. Validate at construction so a bad
+        # value fails loud at the boundary, not deep in the dispatcher.
+        valid = get_args(RefChannel)
+        if self.ref_channel not in valid:
+            raise ValueError(
+                f"ref_channel {self.ref_channel!r} is not one of {valid}"
+            )
 
 
 # --- Luma helpers -------------------------------------------------------
@@ -172,7 +182,9 @@ async def choose_ref_channel(
             call (NOT a constraint description — see Decision 4 in
             docs/plan.md).
 
-    Raises ValueError if Claude's response doesn't contain parseable JSON.
+    Raises ValueError if Claude's response doesn't contain parseable
+    JSON, or if the returned ref_channel is not one of the three
+    allowed values.
     """
     msg = await claude.messages.create(
         model=ANTHROPIC_MODEL,
