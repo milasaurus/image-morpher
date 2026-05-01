@@ -39,7 +39,11 @@ load_dotenv(override=False)
 
 PROMPT = os.environ.get("SPIKE_PROMPT", "a vintage typewriter on a wooden desk")
 PHOTON_MODEL = os.environ.get("PHOTON_MODEL", "photon-1")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+# Default to Haiku — cheap, fast, vision-capable, plenty for routing
+# between three options. If the spike's channel-quality gate fails
+# (<3/5 agreement), try Sonnet via ANTHROPIC_MODEL=claude-sonnet-4-6
+# before concluding the LLM-routing idea itself is broken.
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 
 # Round 0 calls Photon twice with the same prompt. If the pair comes
 # back near-identical, the loop has no A/B signal — at that point edit

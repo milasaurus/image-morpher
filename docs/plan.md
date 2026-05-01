@@ -235,7 +235,9 @@ Approach:
   `config.py` in Unit 2; log the trio in `NOTES.md`.
 - Confirm Luma URL TTL ≥ ~30 min. If shorter, note it in README.
 - Sanity-check the configured Anthropic model. If
-  `claude-sonnet-4-6` is deprecated, set `ANTHROPIC_MODEL` in `.env`.
+  `claude-haiku-4-5-20251001` is unavailable or its picks look noisy,
+  set `ANTHROPIC_MODEL` to `claude-sonnet-4-6` (or another vision-capable
+  Sonnet) before concluding the LLM-routing idea itself is broken.
 
 Loop convergence is not measured here — judged in real use during
 Units 5/6.
@@ -265,7 +267,8 @@ Approach:
   `python-dotenv`. Dev: `pytest`, `pytest-asyncio`, `respx`.
 - `config.py` (`pydantic-settings`): `LUMAAI_API_KEY`,
   `ANTHROPIC_API_KEY` (both required), `PHOTON_MODEL`
-  (`photon-1`), `ANTHROPIC_MODEL` (`claude-sonnet-4-6`),
+  (`photon-1`), `ANTHROPIC_MODEL` (`claude-haiku-4-5-20251001` —
+  cheap, fast, vision-capable; see Unit 1 for the upgrade path),
   `CORS_ORIGINS` (`["http://localhost:5173"]`),
   `WEIGHT_STYLE_REF` (0.55), `WEIGHT_MODIFY_IMAGE_REF` (0.85).
 - `luma.py`:
