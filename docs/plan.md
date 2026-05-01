@@ -187,7 +187,7 @@ sequenceDiagram
   A-->>W: { images: [A, B], ref_channel: null }
 
   U->>W: click winner (B)
-  W->>A: POST /api/round { prompt, winner=B, loser=A }
+  W->>A: POST /api/round { prompt, winner=B, runner_up=A }
   A->>C: choose_ref_channel(prompt, B, A)
   C-->>A: { rationale, ref_channel, instruction }
   A->>L: generate(instruction, ref=channel→B, weight=config_default)
@@ -300,10 +300,10 @@ Approach:
   - `RefChannel = Literal["style_ref", "character_ref", "modify_image_ref"]`
   - `RefChannelChoice`: `rationale, ref_channel, instruction` (no
     `weight_suggestion` — Decision 3).
-  - `RoundRequest`: `prompt, winner_url, loser_url, override_ref_channel`.
+  - `RoundRequest`: `prompt, winner_url, runner_up_url, override_ref_channel`.
   - `RoundResponse`: `images, ref_channel: RefChannelChoice | None`.
   - `ErrorResponse`: `error: Literal[...], detail`.
-- `ref_channel.py`: `async def choose_ref_channel(prompt, winner, loser) ->
+- `ref_channel.py`: `async def choose_ref_channel(prompt, winner, runner_up) ->
   RefChannelChoice`. Anthropic SDK; model from `settings.ANTHROPIC_MODEL`.
   Robust JSON extraction (regex first `{...}` block).
 - `main.py` `POST /api/round` handles three cases:
@@ -366,9 +366,9 @@ Files: modify `App.tsx`, `ImagePair.tsx`, `styles.css`,
 Approach:
 
 - Click winner: set `currentPair.a = winner`, clear `currentPair.b`,
-  transition to `generating`. Fire `postRound({prompt, winner, loser,
-  override_ref_channel: pendingOverride})`. Reset `pendingOverride` after
-  firing.
+  transition to `generating`. Fire `postRound({prompt, winner,
+  runner_up, override_ref_channel: pendingOverride})`. Reset
+  `pendingOverride` after firing.
 - Round-N response: set `currentPair.b = response.images[0]`,
   `currentRefChannel = response.ref_channel`. Transition to `picking`.
 - `RefChannelSubtitle`: hidden on round 0 via `visibility: hidden` with

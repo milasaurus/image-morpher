@@ -63,7 +63,7 @@ The single bet: **anchored A/B refinement loop on a single image.**
 - Anchored loop: winner persists as A, one new candidate generated as
   B each subsequent round
 - LLM reasoning step per round: given (prompt, current winner, last
-  loser), output JSON `{rationale, ref_channel, instruction}` where
+  runner-up), output JSON `{rationale, ref_channel, instruction}` where
   `ref_channel ∈ {style_ref, character_ref, modify_image_ref}`.
   Per-channel weight defaults live in backend config, calibrated
   empirically (logged in NOTES.md), *not* asked of the LLM — it has
@@ -182,8 +182,8 @@ prototype — log surprises in `NOTES.md` as they happen.
 
 The brain of the system is one LLM call per round. Tight contract:
 
-**Inputs**: original text prompt, winner image URL, loser image URL
-(both from previous round)
+**Inputs**: original text prompt, winner image URL, runner-up image
+URL (both from previous round)
 
 **System prompt** (sketch — refine during spike):
 

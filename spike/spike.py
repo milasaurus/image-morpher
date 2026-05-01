@@ -143,8 +143,24 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 async def choose_ref_channel(
-    prompt: str, winner_url: str, loser_url: str
+    prompt: str, winner_url: str, runner_up_url: str
 ) -> RefChannelChoice:
+    """Ask Claude which Luma reference channel to use for the next round.
+
+    Inputs:
+        prompt: the original text prompt that produced both images.
+        winner_url: public Luma CDN URL of the image the user picked.
+        runner_up_url: public Luma CDN URL of the other round-0 image.
+
+    Returns a RefChannelChoice with:
+        rationale: 1–2 sentences on why B won (free text).
+        ref_channel: one of style_ref / character_ref / modify_image_ref.
+        instruction: a self-contained text prompt for the next Photon
+            call (NOT a constraint description — see Decision 4 in
+            docs/plan.md).
+
+    Raises ValueError if Claude's response doesn't contain parseable JSON.
+    """
     msg = await claude.messages.create(
         model=ANTHROPIC_MODEL,
         max_tokens=600,
@@ -155,9 +171,9 @@ async def choose_ref_channel(
                 "content": [
                     {
                         "type": "text",
-                        "text": f"Original prompt: {prompt!r}\n\nImage A (the loser):",
+                        "text": f"Original prompt: {prompt!r}\n\nImage A (the runner-up):",
                     },
-                    {"type": "image", "source": {"type": "url", "url": loser_url}},
+                    {"type": "image", "source": {"type": "url", "url": runner_up_url}},
                     {"type": "text", "text": "Image B (the winner):"},
                     {"type": "image", "source": {"type": "url", "url": winner_url}},
                 ],
@@ -204,15 +220,15 @@ async def main() -> None:
 
     winner_label = os.environ.get("WINNER", "B").upper()
     if winner_label == "A":
-        winner_url, loser_url = a_url, b_url
+        winner_url, runner_up_url = a_url, b_url
     else:
-        winner_url, loser_url = b_url, a_url
+        winner_url, runner_up_url = b_url, a_url
     print(f"Winner (set WINNER=A or =B in .env to override): {winner_label}")
     print()
 
     print("Asking Claude to pick a reference channel…")
     t1 = time.monotonic()
-    choice = await choose_ref_channel(PROMPT, winner_url, loser_url)
+    choice = await choose_ref_channel(PROMPT, winner_url, runner_up_url)
     elapsed = time.monotonic() - t1
     print(f"  Rationale:    {choice.rationale}")
     print(f"  Ref channel:  {choice.ref_channel}")
