@@ -1,26 +1,29 @@
 # image-morpher — Build Notes
 
 Findings worth remembering. Anything that surprised me, broke an
-assumption, or would be useful to future-me 
+assumption, or would be useful to future-me.
 
-## Open questions to validate
+## Open questions for the spike (Unit 1)
 
-- [ ] Does Photon return two different images when called twice with
-      the identical prompt? If outputs are near-duplicates, round 0
-      needs prompt jitter — the whole product depends on visible
-      variance between A and B.
-- [ ] What does `weight` *feel* like across the 0–1 range on
-      `image_ref` and `style_ref`? Where's the line between "carry
-      the vibe" and "near-duplicate"?
-- [ ] Is `modify_image_ref` materially different from a fresh
-      generation with the winner as a high-weight `image_ref`? Or
-      are they the same thing under the hood?
-- [ ] Latency: p50 / p99 across `photon-1` vs `photon-flash-1`. Is
-      flash good enough for the rapid pick-pick-pick rhythm?
-- [ ] Does the LLM lever-selection produce sensible JSON
-      consistently? Failure modes? When does the lever choice feel
-      obviously wrong?
+- [ ] **Round-0 variance.** With seeded prompts (`warm lighting` /
+      `cool lighting`), do A and B differ visibly? If not, sharpen
+      the seeds — the whole product depends on visible variance.
+- [ ] **Lever agreement.** On 5 hand-picked obvious A/B pairs, does
+      Claude pick the lever you'd have picked ≥3 times? <3/5 trips
+      the go/no-go gate.
+- [ ] **`style_ref` weight.** Run the same anchor at 0.4 / 0.6 / 0.8.
+      Which felt like "carry the vibe" without near-duplication?
+      That number goes into `api/app/config.py` in Unit 2.
+- [ ] **Cold / p50 latency.** What's a typical round take?
+- [ ] **Luma URL TTL.** Do generated URLs survive ≥30 minutes idle?
+      If shorter, README documents the constraint.
+- [ ] **Anthropic model.** Is `claude-sonnet-4-6` still the right
+      default at run time?
 
 ## Findings
 
-(Empty — fill as I build.)
+(Empty — fill as I run the spike.)
+
+## Headline finding
+
+(Edit before shipping so the strongest finding leads.)
