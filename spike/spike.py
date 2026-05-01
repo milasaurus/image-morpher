@@ -20,6 +20,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 from typing import Literal
@@ -34,6 +35,14 @@ from system_prompt import SYSTEM_PROMPT
 # weights) can be set in .env if you don't want to export them; existing
 # OS env vars take precedence.
 load_dotenv(override=False)
+
+# Fail with a friendly message if required keys are missing, rather
+# than letting the SDK clients raise KeyError on the next two lookups.
+_missing = [
+    k for k in ("LUMAAI_API_KEY", "ANTHROPIC_API_KEY") if not os.environ.get(k)
+]
+if _missing:
+    sys.exit(f"missing required env var(s): {', '.join(_missing)}")
 
 # --- config -------------------------------------------------------------
 
