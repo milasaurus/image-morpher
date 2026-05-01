@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+.uv-cache/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Env + secrets
+.env
+.env.local
+
+# Spike output
+output.html
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
