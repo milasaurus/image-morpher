@@ -37,8 +37,5 @@ times to gather the data Unit 1 wants in `NOTES.md`:
   prints.
 - **Luma URL TTL.** Open one of the printed URLs, leave the tab
   idle 30+ minutes, refresh. Still works?
-- **Anthropic model.** If `claude-sonnet-4-6` is deprecated by the
-  time you run this, set `ANTHROPIC_MODEL` in `.env` to a working
-  vision-capable Sonnet.
 
 Log findings as you go in `../NOTES.md`.
