@@ -24,7 +24,7 @@ assumption, or would be useful to future-me.
 | # | Prompt | Claude's pick | What I'd have picked | Match? |
 |---|--------|---------------|----------------------|--------|
 | 1 | "a vintage typewriter on a wooden desk" | `preserve_subject` | `preserve_look` (A vs B differ in composition / DOF / lighting, not subject) | **miss** |
-| 2 | TBD | | | |
+| 2 | "a wolf howling at the moon" | `preserve_look` (eagle replaces wolf) | `tweak` (refine the wolf-on-moon image, don't change subjects) | **miss** |
 | 3 | TBD | | | |
 | 4 | TBD | | | |
 | 5 | TBD | | | |
@@ -53,6 +53,61 @@ Each generation is roughly 30–60s on this account, well above the
 
 Need more data points before treating this as the headline. Re-run
 the spike a few times to get a real cold/p50 distribution.
+
+### Strategies are exploration-shaped, not convergence-shaped (logged 2026-05-07)
+
+The brief framed image-morpher as refinement *to convergence* — a
+designer iterating on a single image they're trying to perfect. But
+two of the three strategies as defined encourage divergence:
+
+| Strategy | What it does | Convergence-friendly? |
+|---|---|---|
+| `preserve_look` | "same look, different subject" | ❌ swaps the user's chosen subject |
+| `preserve_subject` | "same subject, different scene" | ❌ swaps the user's chosen scene |
+| `tweak` | "near-copy with one focused change" | ✅ only convergent option |
+
+Case 2 surfaced this empirically: user prompts "a wolf howling at
+the moon" → picks B → Claude correctly identifies B's strengths as
+*look* attributes → applies `preserve_look` per the system prompt
+("allow the subject to vary") → returns an instruction that swaps
+the wolf for an eagle. Mechanically correct per the system prompt,
+but almost certainly not what a designer iterating on the wolf-image
+wants.
+
+Likely root cause: the strategy taxonomy is vestigial from the
+three-channel Dream Machine API design (`style_ref` /
+`character_ref` / `modify_image_ref`). On that API the channels
+defined three different *kinds of generation*; "preserve_look,
+allow subject variation" mapped to `style_ref` and made API-level
+sense. On the new agents API where routing is language-only, the
+strategies should probably be reframed around what the *designer
+wants next* (refine this / explore alternatives) rather than which
+old API channel the routing maps to.
+
+### LLM cannot reliably infer user intent from pixels alone (logged 2026-05-07)
+
+Across cases 1 and 2 the spike has shown that even a vision-capable
+Claude (Haiku 4.5) struggles to infer *what the user wants next*
+from "they picked B over A." Reasons:
+
+1. Multiple legitimate inferences from any pick. Picking B over A
+   could mean "I like B's mood" or "I like B's composition" or "I
+   like B's whole vibe and want this exactly." The LLM has no signal
+   to disambiguate.
+2. Even when the LLM correctly identifies *why* B won (case 2's
+   rationale is correct: B has more luminous moon and dramatic
+   lighting), it can't read whether the designer wants to keep that
+   *with* the original subject or *without* it.
+
+This is the original "chip" insurance from the brief's earlier
+draft, surfacing under a different name. We descoped chips on the
+bet that LLM-alone would work; the spike says it doesn't.
+
+The mechanism the user actually needs is explicit intent input
+after the pick: a multiple-choice "what do you want next?" that
+maps directly to a strategy, removing the LLM's routing decision.
+LLM keeps the prompt-authoring role; user keeps the strategy role.
+See follow-up below.
 
 ### Strategy mislabel — instruction is right, label is wrong (case 1, logged 2026-05-07)
 
