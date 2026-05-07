@@ -1,5 +1,5 @@
 ---
-title: image-morpher prototype — A/B refinement loop on Luma's Dream Machine API
+title: image-morpher prototype — A/B refinement loop on Luma's agents API
 type: feat
 status: active
 date: 2026-05-01
@@ -8,49 +8,60 @@ origin: docs/project-brief.md
 
 # image-morpher prototype — implementation plan
 
-A weekend-scope prototype. User types a prompt → two parallel Photon
-generations → click winner → an LLM proposes which Luma reference
-channel (`style_ref` / `character_ref` / `modify_image_ref`) to use
-for the next round → user can override → repeat → "Done" → PNG
-download.
+A weekend-scope prototype. User types a prompt → two parallel UNI-1
+generations → click winner → pick one of three intents (Refine this
+/ New subject, same look / New scene, same subject) → an LLM writes
+a prompt that embodies that intent → repeat → "Done" → PNG download.
 
 Audience: designers / mood-board creators iterating 8–15 rounds on a
 single image. See `docs/project-brief.md` for product context.
 
 Stack: React + Vite + TypeScript (frontend), Python + FastAPI +
-`lumaai` SDK + `anthropic` SDK (backend). Localhost only.
+`luma-agents` SDK + `anthropic` SDK (backend). Localhost only.
 
 ## Problem frame
 
 Generative image refinement loses what made earlier outputs good.
 Existing tools either start from scratch on every regeneration
-(Midjourney) or expose reference images without telling you when each
-kind is right (Luma's API itself). Hypothesis: when a user prefers B
-over A, the *kind* of preference signal (visual style, subject
-identity, surgical change) maps to a different Luma reference channel,
-and an LLM looking at both images can route that signal. The prototype
-is the apparatus to test that hypothesis; the artifact is the running
-code plus the findings logged in `NOTES.md`.
+(Midjourney) or rely on the user knowing how to phrase
+"this-but-different-in-this-specific-way" prompts. Hypothesis: when a
+user prefers B over A, the *kind* of preference signal (visual style,
+subject identity, surgical change) maps to a different *shape of
+prompt*, and an LLM looking at both images can pick the right shape
+and write the prompt. The prototype is the apparatus to test that
+hypothesis; the artifact is the running code plus the findings logged
+in `NOTES.md`.
+
+Luma's agents API exposes a single image-conditioning primitive
+(`image_ref`), so the routing decision happens entirely in language
+— UNI-1's autoregressive reasoning is what interprets a
+strategy-flavoured prompt and conditions on the anchor image
+appropriately.
 
 ## Requirements trace
 
 **Core A/B loop**
 
-- **R1.** Text prompt → two parallel Photon generations on round 0.
+- **R1.** Text prompt → two parallel UNI-1 generations on round 0.
 - **R2.** Click-to-pick A/B UI on every round.
 - **R3.** Anchored loop: winner persists as A; one new candidate B is
   generated each subsequent round.
 
-**LLM reasoning**
+**Intent and LLM reasoning**
 
-- **R4.** LLM lever-selection per round, returning JSON
-  `{rationale, lever, instruction}` with `lever ∈ {style_ref,
-  character_ref, modify_image_ref}`. Per-lever weight defaults live in
-  config (Decision 3).
-- **R5.** LLM lever and rationale revealed *after* B generates,
-  surfaced via plain-language label (Decision 6). Override dropdown
-  applies to the next round, not the current one — the user's escape
-  hatch when Claude misroutes.
+- **R4.** **User picks the strategy, not the LLM.** After clicking the
+  winner, the user picks one of three intents that maps to a strategy:
+  🎯 *Refine this* (`tweak`), 🎨 *New subject, same look*
+  (`preserve_look`), 🌐 *New scene, same subject*
+  (`preserve_subject`). The strategy is sent to the backend as a
+  request input. (See Decision 7 for the rationale; the original
+  LLM-routes design failed Unit 1's gate.)
+- **R5.** LLM writes the next-round prompt given (winner, runner-up,
+  prompt, **user-picked strategy**). Returns JSON
+  `{rationale, instruction}`. The `instruction` is the literal prompt
+  for the next UNI-1 call; `image_ref` always points at the winner
+  URL (Decision 3). The rationale is shown next to B as a subtitle so
+  the user can see *why* this image came out the way it did.
 
 **Ship and findings**
 
@@ -60,10 +71,11 @@ code plus the findings logged in `NOTES.md`.
 - **R10.** A designer can run 10+ rounds in one session without the
   loop drifting away from what they liked. Per-round latency feels
   like part of the craft, not a wait.
-- **R11.** `NOTES.md` captures ≥5 substantive findings about Photon /
-  UNI-1 behaviour, with the strongest finding leading. Includes a
-  one-line read on whether the loop converged or drifted during the
-  Unit 6 smoke.
+- **R11.** `NOTES.md` captures ≥5 substantive findings about UNI-1
+  and the Luma agents API, with the strongest finding leading.
+  Includes a one-line read on whether the loop converged or drifted
+  during the Unit 6 smoke. The API-migration finding from Unit 1's
+  spike is already logged.
 
 ## Out of scope
 
@@ -80,11 +92,12 @@ Cut from a wider draft, parked as v2 candidates if the MVP earns
 them:
 
 - **Preference chip** (`mood` / `subject` / `composition` / `bolder`)
-  feeding the lever prompt — was insurance against an unproven risk;
+  feeding the strategy prompt — was insurance against an unproven risk;
   add only if Unit 6 shows the LLM-alone path is wobbly.
 - **"Both bad" re-roll button** — escape hatch; substitute is "pick
-  the less-bad one and override for next round", or click Done.
-- **History rail** with thumbnails + lever badges — visual progress
+  the less-bad one and choose `Refine this` for next round", or
+  click Done.
+- **History rail** with thumbnails + channel badges — visual progress
   indicator; the active pair is the only thing that affects outcomes.
 - **Demo GIF in the README** — fast-follow once the prototype ships;
   record a 10-pick session and embed at the top of `README.md`.
@@ -129,36 +142,61 @@ Sunday-afternoon-when-scope-creep-is-loud rules:
 1. **Single endpoint.** `POST /api/round` handles both round-0 and
    round-N off the request shape (`winner_url is None` → round 0).
    Cuts duplicate client logic.
-2. **Override skips Claude.** Synthetic `LeverChoice` built from the
-   request; no LLM call. Acceptable cost: override mode produces
-   near-identical outputs round-over-round (only the channel changes).
-3. **`weight` is not asked of the LLM.** Per-lever defaults in
-   `config.py`: `WEIGHT_STYLE_REF` (initial 0.55, refined in Unit 1)
-   and `WEIGHT_MODIFY_IMAGE_REF` (0.85). `character_ref` has no
-   weight in the SDK and is silently exempt.
-4. **`instruction` becomes the Photon `prompt` on every round-N
+2. **Strategy is a user input, not an LLM output.** After the winner
+   click, the user picks one of three intents (Refine this / New
+   subject, same look / New scene, same subject) and the choice is
+   sent to the backend. The LLM writes the next-round prompt
+   *conditional* on that strategy. There is no override dropdown
+   anymore — the picker IS the override. (See Decision 7 for why we
+   moved away from LLM-as-router.)
+3. **`image_ref` is always the winner; `weight` is empirical.** The
+   round-N call is always
+   `generate(prompt=instruction, image_ref=[{url: winner}])`. There
+   is no per-strategy channel branching (the new agents API has only
+   one primitive). Whether the API accepts a `weight` field on
+   `image_ref` entries is open question #2; if yes, defaults live in
+   `config.py` and are calibrated empirically. If no, conditioning
+   strength is a prompt-only knob.
+4. **`instruction` becomes the UNI-1 `prompt` on every round-N
    call.** The system prompt must require a self-contained image
    prompt (e.g. *"a vintage typewriter on a wooden desk in moodier
    lighting"*), never a constraint description. Constraint phrasing
-   becomes the literal Photon prompt and loses the original subject.
+   becomes the literal UNI-1 prompt and loses the original subject.
 5. **Round-N response carries only the new B URL.** Frontend retains
    the prior winner from local state. Backend is stateless.
-6. **Plain-language lever labels in the UI.** `style_ref` → "Keep the
-   look", `character_ref` → "Keep the subject", `modify_image_ref` →
-   "Tweak it". Translation table in
-   `web/src/components/LeverSubtitle.tsx`. API strings never reach
-   the user.
+6. **Plain-language strategy labels in the UI.** `tweak` → "Refine
+   this", `preserve_look` → "New subject, same look",
+   `preserve_subject` → "New scene, same subject". Translation tables
+   in `web/src/components/StrategyPicker.tsx` (button labels) and
+   `web/src/components/StrategySubtitle.tsx` (B's subtitle on the
+   prior round). Strategy enum values never reach the user.
+7. **LLM-as-router was empirically dead-ended in Unit 1.** Original
+   design had Claude pick the strategy from the two image URLs
+   alone. Two gate cases (typewriter, wolf-howling-at-moon) showed
+   Claude can't reliably infer user intent from pixels — even when
+   it correctly identifies *why* B beat A, it can't tell whether the
+   user wants that quality applied to the same subject or a new one.
+   Strategy moved to explicit user input; LLM keeps the
+   prompt-authoring role. Findings logged in `NOTES.md`. The original
+   "≥3/5 strategy agreement" gate is retired; the new gate is "given
+   a user-picked strategy, does Claude write a prompt that embodies
+   it?" — measured during Unit 1's continued probing and Unit 6's
+   smoke.
+
 ## Open questions to validate while building
 
-- **Round-0 variance.** Does Photon return materially different
-  images on identical prompts? If not, append distinct semantic
-  seeds (`"warm lighting"` / `"cool lighting"`) — neutral nonces may
-  collapse to the same latent.
-- **`style_ref` weight calibration.** What value feels like "carry
-  the vibe" vs "near-duplicate"? Calibrate empirically; bake into
-  `config.py`.
-- **Image URL TTL.** Do Luma URLs survive ~30 min? If shorter,
-  document in README; do not build a proxy.
+- **Round-0 variance / jitter need.** Does UNI-1 return materially
+  different images on identical prompts? The spike defaults to the
+  bare prompt twice; if A and B come back near-identical, edit the
+  spike to append distinct semantic modifiers (e.g. `, warm lighting`
+  / `, cool lighting`). Two gotchas: neutral nonces may collapse to
+  the same latent, and the jitter axis you pick frames what dimension
+  A vs B is asking the user to vote on — pick deliberately.
+- **Does `image_ref` accept `weight` on the new agents API?** Docs
+  list `url` / `data` / `media_type` only; old API had `weight`. If
+  accepted, calibrate a default empirically. If not, conditioning
+  strength is a prompt-only knob ("loosely inspired by …" vs
+  "matching exactly the composition of …").
 
 Loop convergence and latency-feel are answered by *using* the
 prototype during Units 5/6 — log surprises in `NOTES.md`.
@@ -172,23 +210,23 @@ sequenceDiagram
   participant U as User
   participant W as Web (React)
   participant A as API (FastAPI)
-  participant L as Luma (Photon)
+  participant L as Luma (UNI-1)
   participant C as Claude
 
   U->>W: type prompt, submit
   W->>A: POST /api/round { prompt }
   par
-    A->>L: generate(prompt + "A seed")
-    A->>L: generate(prompt + "B seed")
+    A->>L: generate(prompt)
+    A->>L: generate(prompt)
   end
-  A-->>W: { images: [A, B], lever: null }
+  A-->>W: { images: [A, B], strategy: null }
 
-  U->>W: click winner (B)
-  W->>A: POST /api/round { prompt, winner=B, loser=A }
-  A->>C: choose_lever(prompt, B, A)
-  C-->>A: { rationale, lever, instruction }
-  A->>L: generate(instruction, ref=lever→B, weight=config_default)
-  A-->>W: { images: [newB], lever: {...} }
+  U->>W: click winner (B), pick intent (Refine / New subject / New scene)
+  W->>A: POST /api/round { prompt, winner=B, runner_up=A, strategy }
+  A->>C: write_instruction(prompt, B, A, strategy)
+  C-->>A: { rationale, instruction }
+  A->>L: generate(instruction, image_ref=[{url: B}])
+  A-->>W: { images: [newB], rationale, strategy }
 
   U->>W: click "Done"
   W->>U: download PNG
@@ -199,119 +237,144 @@ sequenceDiagram
 ```
 idle ──[submit]──▶ generating
 generating ──[ok]──▶ picking
-picking ──[click winner]──▶ generating  (sends pendingOverride if set)
+picking ──[click winner]──▶ choosing_intent
+choosing_intent ──[pick intent]──▶ generating
 picking ──[click "Done"]──▶ done
 generating ──[error]──▶ error ──[retry]──▶ generating
 ```
 
-In `picking`, the override dropdown is input-only. `pendingOverride`
-resets after each round-N submit.
+`choosing_intent` is the moment between picking the winner and
+firing the next-round request — the user picks one of three
+strategy buttons. There is no separate override dropdown; the
+picker is always shown.
 
 ## Implementation units
 
 ### Unit 1: Spike (Day 0 precondition)
 
-Single-file Python spike. Validates the round-0 → lever → round-1
-loop end-to-end before any backend code. Acts as the go/no-go gate
-on the core hypothesis.
+Single-file Python spike. Validates the round-0 → strategy → round-1
+loop end-to-end before any backend code.
 
-Files: `spike/spike.py`, `spike/pyproject.toml`, `spike/.env.example`,
-`spike/README.md`, `NOTES.md`.
+Files: `spike/spike.py`, `spike/system_prompt.py`,
+`spike/pyproject.toml`, `spike/.env.example`, `spike/README.md`,
+`NOTES.md`.
 
 Approach:
 
-- Hardcode a prompt; call Photon twice in parallel; print both URLs.
+- Hardcode a prompt; call UNI-1 twice in parallel; print both URLs.
 - Confirm round-0 variance is visually meaningful. If A and B look
-  near-identical, edit to use distinct semantic seeds (`"warm
-  lighting"` for A, `"cool lighting"` for B).
-- On 5 hand-picked A/B pairs where the right lever feels obvious to
-  you, check whether Claude agrees ≥3 times.
-- Calibrate `WEIGHT_STYLE_REF` at 0.4 / 0.6 / 0.8; pick whichever
-  felt like "carry the vibe" without near-duplication. Bake into
-  `config.py` in Unit 2; log the trio in `NOTES.md`.
-- Confirm Luma URL TTL ≥ ~30 min. If shorter, note it in README.
-- Sanity-check the configured Anthropic model. If
-  `claude-sonnet-4-6` is deprecated, set `ANTHROPIC_MODEL` in `.env`.
+  near-identical on the bare prompt, edit the spike to append
+  distinct semantic modifiers to each call (jitter — see Open
+  Questions).
+- **Prompt the user for an intent at the console** after they pick
+  the winner. Three options mapped to `tweak` / `preserve_look` /
+  `preserve_subject`. The chosen strategy is passed to
+  `write_instruction()` as input — Claude does not pick the
+  strategy itself. This shape was validated during the spike's
+  earlier runs: two cases (typewriter, wolf-howling-at-moon) showed
+  Claude can't reliably infer user intent from images alone, so
+  routing was moved to explicit user input. See Decision 7 and
+  `NOTES.md` for the full reasoning.
+- Run 5+ hand-picked prompts under each strategy. Eyeball whether
+  Claude's `instruction` actually embodies the strategy the user
+  chose (e.g., when user picks `tweak`, does the instruction stay
+  close to the original subject? When user picks `preserve_look`,
+  does the instruction inherit B's stylistic adjectives?).
+- Probe whether `image_ref` accepts a `weight` field (open question
+  #2). If yes, calibrate at 0.4 / 0.6 / 0.8 and log the trio in
+  `NOTES.md`. If no, log that finding and note conditioning is
+  prompt-only.
 
 Loop convergence is not measured here — judged in real use during
 Units 5/6.
 
-Verification (go/no-go):
+Verification:
 
-- ≥3/5 lever agreement on hand-picked obvious cases. If <3/5, decide
-  before Unit 2: sharpen the prompt, pivot the README narrative, or
-  demote the LLM step to a simpler A/B refiner.
-- `NOTES.md` logs round-0 variance, lever agreement count, weight
-  trio, cold/p50 latency, URL TTL, model status.
+- For each user-picked strategy, Claude's instruction produces a
+  round-1 image that visibly embodies the strategy on ≥3/5 cases.
+  This is a *prompt-authoring* gate, not a routing gate (the routing
+  gate was retired — see Decision 7).
+- `NOTES.md` logs round-0 variance, per-strategy authoring quality,
+  `image_ref` weight result, cold/p50 latency.
 
 ---
 
 ### Unit 2: API scaffold + Luma generate wrapper
 
-Stand up FastAPI + a single async helper that wraps Luma generation
-and abstracts reference-channel shape differences.
+Stand up FastAPI + a single async helper that wraps UNI-1 generation
+and polling.
 
 Files: `api/pyproject.toml`, `api/.env.example`,
 `api/app/{__init__,config,luma}.py`, `api/tests/test_luma.py`.
 
 Approach:
 
-- Deps: `fastapi`, `uvicorn[standard]`, `lumaai>=1.21,<2`,
+- Deps: `fastapi`, `uvicorn[standard]`, `luma-agents`,
   `anthropic>=0.40`, `pydantic>=2`, `pydantic-settings`,
   `python-dotenv`. Dev: `pytest`, `pytest-asyncio`, `respx`.
 - `config.py` (`pydantic-settings`): `LUMAAI_API_KEY`,
-  `ANTHROPIC_API_KEY` (both required), `PHOTON_MODEL`
-  (`photon-1`), `ANTHROPIC_MODEL` (`claude-sonnet-4-6`),
-  `CORS_ORIGINS` (`["http://localhost:5173"]`),
-  `WEIGHT_STYLE_REF` (0.55), `WEIGHT_MODIFY_IMAGE_REF` (0.85).
+  `ANTHROPIC_API_KEY` (both required),
+  `LUMA_MODEL` (`uni-1`), `ANTHROPIC_MODEL`
+  (`claude-haiku-4-5-20251001`),
+  `CORS_ORIGINS` (`["http://localhost:5173"]`).
+  Plus `IMAGE_REF_WEIGHT` (optional float, only sent if Unit 1's
+  empirical probe confirmed the field is accepted).
 - `luma.py`:
-  - Module-level `AsyncLumaAI` client.
-  - `async def generate(prompt, **refs) -> str`. Polls every 2s,
-    180s overall timeout. Raises `GenerationFailed` /
-    `GenerationTimeout`.
-  - `async def generate_with_lever(lever_choice, anchor_url) -> str`.
-    Channel-shape mapping: `style_ref` → list, `character_ref` →
-    identity dict (no weight), `modify_image_ref` → dict. Per-lever
-    weight from `settings`. Always sends `lever_choice.instruction`
-    as the Photon `prompt`.
+  - Module-level `AsyncLuma` client (`luma-agents` SDK).
+  - `async def generate(prompt: str, image_ref: list | None = None) -> str`.
+    Calls `agents.lumalabs.ai/v1/generations`, polls
+    `GET /v1/generations/{id}` every 2s with a 180s overall timeout.
+    Raises `GenerationFailed` on `state == "failed"`,
+    `GenerationTimeout` on deadline. Returns `output[0].url`.
+  - `async def generate_with_anchor(written: WrittenInstruction, anchor_url) -> str`
+    is a one-liner: `await generate(written.instruction,
+    image_ref=[{"url": anchor_url}])` (plus weight if accepted).
+    Kept as a function for symmetry with the spike, but trivial.
 
-Tests: happy path, generation failure, timeout, the three
-channel-shape mappings (especially: no `weight` field for
-`character_ref`).
+Tests: happy path, generation failure, timeout, round-N call passes
+`image_ref` correctly.
 
 Verification: `uv run pytest` passes; module imports cleanly.
 
 ---
 
-### Unit 3: Pydantic models, lever selection, /api/round endpoint
+### Unit 3: Pydantic models, instruction authoring, /api/round endpoint
 
 Wire the FastAPI route. Single endpoint dispatches on request shape.
 
-Files: `api/app/{models,lever,main}.py`,
-`api/tests/{test_lever,test_main}.py`.
+Files: `api/app/{models,strategy,main}.py`,
+`api/tests/{test_strategy,test_main}.py`.
 
 Approach:
 
 - `models.py`:
-  - `Lever = Literal["style_ref", "character_ref", "modify_image_ref"]`
-  - `LeverChoice`: `rationale, lever, instruction` (no
-    `weight_suggestion` — Decision 3).
-  - `RoundRequest`: `prompt, winner_url, loser_url, override_lever`.
-  - `RoundResponse`: `images, lever`.
+  - `Strategy = Literal["preserve_look", "preserve_subject", "tweak"]`
+  - `WrittenInstruction`: `rationale, instruction` (no `strategy`
+    field — it came in as a request input, not an LLM output).
+  - `RoundRequest`: `prompt, winner_url, runner_up_url, strategy`.
+    `strategy` is required for round-N (`winner_url` is set);
+    omitted/null for round 0.
+  - `RoundResponse`: `images, rationale: str | None,
+    strategy: Strategy | None`. The strategy echoed back is the one
+    the user picked, useful for the frontend's subtitle.
   - `ErrorResponse`: `error: Literal[...], detail`.
-- `lever.py`: `async def choose_lever(prompt, winner, loser) ->
-  LeverChoice`. Anthropic SDK; model from `settings.ANTHROPIC_MODEL`.
+- `strategy.py`: `async def write_instruction(prompt, winner,
+  runner_up, strategy) -> WrittenInstruction`. Anthropic SDK; model
+  from `settings.ANTHROPIC_MODEL`. System prompt teaches what each
+  strategy means and how its `instruction` should be shaped — but
+  the strategy is a request *input*, not something Claude picks.
   Robust JSON extraction (regex first `{...}` block).
-- `main.py` `POST /api/round` handles three cases:
+- `main.py` `POST /api/round` handles two cases:
   - `winner_url is None` → round 0 (`asyncio.gather` two `generate`
-    calls).
-  - `override_lever` set → synthetic `LeverChoice`; skip Claude.
-  - Else → `choose_lever` then `generate_with_lever`.
+    calls). Strategy is ignored.
+  - Else → `write_instruction(prompt, winner, runner_up, strategy)`
+    then `generate(instruction, image_ref=[{url: winner}])`.
 - On failure, return typed `ErrorResponse` with appropriate 5xx.
 
-Tests: lever happy path; lever bad-JSON; endpoint round-0; endpoint
-round-N; endpoint override path skips `choose_lever`; endpoint
-surfaces `GenerationFailed` as 502.
+Tests: instruction happy path under each strategy; bad-JSON;
+endpoint round-0; endpoint round-N for each strategy passes the
+right value through to `write_instruction`; endpoint surfaces
+`GenerationFailed` as 502; round-N missing `strategy` returns 422.
 
 Verification: `uv run pytest` passes; `curl` round-0 returns two URLs.
 
@@ -330,8 +393,10 @@ Files: `web/{package.json, tsconfig.json, vite.config.ts, index.html,
 Approach:
 
 - `npm create vite@latest -- --template react-ts`. Strip boilerplate.
-- `types.ts` mirrors `api/app/models.py` by hand. `LeverChoice` has
-  no `weight_suggestion`.
+- `types.ts` mirrors `api/app/models.py` by hand. `Strategy` is a
+  `Literal` of three string values; `WrittenInstruction` carries
+  `rationale` and `instruction`. Strategy is a request input, not
+  a response field on the LLM output.
 - `api.ts` exposes `postRound(req): Promise<RoundResponse>`. On
   non-2xx, parse `ErrorResponse`, throw `Error` carrying the
   `error` discriminator.
@@ -351,35 +416,46 @@ backend; `npm run test` passes.
 
 ---
 
-### Unit 5: Round-N flow, lever subtitle, override
+### Unit 5: Round-N flow, intent picker, strategy subtitle
 
-Full anchored loop with plain-language lever surfacing and next-round
-override.
+Full anchored loop with explicit intent picking and rationale
+surfacing.
 
 Files: modify `App.tsx`, `ImagePair.tsx`, `styles.css`,
-`App.test.tsx`. Create `LeverSubtitle.tsx` and its test.
+`App.test.tsx`. Create `StrategyPicker.tsx`,
+`StrategySubtitle.tsx`, and their tests.
 
 Approach:
 
 - Click winner: set `currentPair.a = winner`, clear `currentPair.b`,
-  transition to `generating`. Fire `postRound({prompt, winner, loser,
-  override_lever: pendingOverride})`. Reset `pendingOverride` after
-  firing.
+  show `StrategyPicker` (three buttons), transition state to
+  `choosing_intent`. Do *not* fire the request yet.
+- User clicks one of the three buttons → fire `postRound({prompt,
+  winner, runner_up, strategy: <picked>})`, transition to
+  `generating`.
 - Round-N response: set `currentPair.b = response.images[0]`,
-  `currentLever = response.lever`. Transition to `picking`.
-- `LeverSubtitle`: hidden on round 0 via `visibility: hidden` with
-  `min-height` (do *not* `display: none` — collapses layout). Round
-  N+: plain-language label + rationale truncated to ~140 chars,
-  expandable. Override `<select>`: Auto / Keep the look / Keep the
-  subject / Tweak it. Pending-override badge when set.
+  `currentRationale = response.rationale`,
+  `currentStrategy = response.strategy`. Transition back to
+  `picking`.
+- `StrategyPicker`: three buttons in a row — 🎯 Refine this · 🎨 New
+  subject, same look · 🌐 New scene, same subject. Visible only in
+  `choosing_intent`. Buttons map to `tweak` / `preserve_look` /
+  `preserve_subject` per Decision 6. Single-click commits.
+- `StrategySubtitle`: hidden on round 0 via `visibility: hidden`
+  with `min-height` (do *not* `display: none` — collapses layout).
+  Round N+: plain-language label of the strategy that produced this
+  B (e.g. "Refining this") + rationale truncated to ~140 chars,
+  expandable. No override dropdown — the picker on the next round
+  IS the override.
 
-Tests: round-N flow renders new B + lever subtitle; override applies
-to next round; pending override resets after use; clears on "Done";
-LeverSubtitle hidden on round 0; lever-name translation never exposes
-the API string.
+Tests: round-N flow with each strategy renders new B + correct
+subtitle label; picker buttons each fire a request with the right
+`strategy` value; user can't fire round-N without picking; picker
+hidden on round 0; strategy-name translation never exposes the enum
+value.
 
 Verification: manual loop — pick 10 in a row; loop stays coherent;
-lever subtitle updates each round.
+strategy subtitle updates each round.
 
 ---
 
@@ -401,22 +477,24 @@ Approach:
 - `ErrorBanner`: renders when `state.error` is set. Raw
   `error.message` + Retry button that re-fires the last request from
   cached args. No per-error-type copy.
-- Loading polish: skeleton shimmer on placeholder; "Photon's still
+- Loading polish: skeleton shimmer on placeholder; "UNI-1's still
   thinking…" tick after 5s.
 - `README.md` (blog-post tone): what this is, who it's for,
-  quickstart, how it works (gradient-descent + lever routing),
-  saving your output, what I learned (link to `NOTES.md` with the
-  headline finding teased), v2 / out of scope.
+  quickstart, how it works (gradient-descent + prompt-strategy
+  routing on a single `image_ref`), saving your output, what I
+  learned (link to `NOTES.md` with the headline finding teased),
+  v2 / out of scope.
 - `NOTES.md` final pass: ≥5 substantive findings. Edit so the
   strongest leads. Must include: a one-line read on whether the loop
-  converged or drifted across the smoke session, and the `style_ref`
-  weight trio.
+  converged or drifted across the smoke session, the `image_ref`
+  weight finding from Unit 1, and the API-migration finding.
 
 Tests: Save-image anchor renders correctly; `ErrorBanner` renders +
 retry recovers; Done state shows Start over.
 
 Verification: manual smoke — prompt → 10 picks → done. PNG
-downloads. Loop stays coherent. ≥1 pick uses an override. Force
+downloads. Loop stays coherent. Different strategies used across
+the 10 picks. Force
 network error in devtools — banner appears, retry recovers. README's
 quickstart works on a fresh clone.
 
@@ -424,9 +502,9 @@ quickstart works on a fresh clone.
 
 | Risk | Mitigation |
 |------|------------|
-| Photon returns near-identical images on identical prompts. | Unit 1 validates. Distinct semantic seeds on round 0 if needed. |
-| LLM lever-selection is shaky. | Unit 1 gate: ≥3/5 agreement on obvious cases. If <3/5, sharpen prompt / pivot README narrative / demote LLM step. |
-| Photon latency feels slow at round 12. | Skeleton shimmer + elapsed-seconds tick. If still bad, try `photon-flash-1`. Speculative pre-gen is v2. |
+| UNI-1 returns near-identical images on identical prompts. | Unit 1 validates. Distinct semantic seeds on round 0 if needed. |
+| LLM strategy selection is shaky. | Unit 1 gate: ≥3/5 agreement on obvious cases. If <3/5, sharpen prompt / pivot README narrative / demote LLM step. |
+| UNI-1 latency feels slow at round 12. | Skeleton shimmer + elapsed-seconds tick. Speculative pre-gen is v2. |
 | Loop oscillates instead of converging. | Note in `NOTES.md` during the Unit 6 smoke. If endemic, document the failure as the headline finding. |
 | Luma URLs expire mid-session. | Unit 1 confirms TTL ≥ ~30 min. README documents it; no proxy. |
 | Pydantic ↔ TypeScript drift. | Keep both files in PR scope when either changes. |
@@ -436,17 +514,18 @@ quickstart works on a fresh clone.
 
 - Brief: `docs/project-brief.md`
 - Spike: `spike/spike.py` (canonical reference for polling and
-  channel mapping once written)
-- Luma SDK: https://docs.lumalabs.ai/docs/python-image-generation
+  request shape)
+- Luma agents API guide:
+  https://docs.agents.lumalabs.ai/guides/image-generation/
+- Luma agents Python SDK: https://docs.agents.lumalabs.ai/api/python
 - Anthropic SDK: https://docs.anthropic.com/en/api/getting-started
-- Verified Luma channel shapes:
-  - `image_ref`: `list[{url, weight}]`, max 4 (unused in MVP)
-  - `style_ref`: `list[{url, weight}]`
-  - `character_ref`: `dict {"identity0": {"images": [...]}}` —
-    **no weight field**
-  - `modify_image_ref`: `dict {url, weight}`
-- Photon API has no public seed parameter — round-0 variance comes
-  from prompt jitter or model nondeterminism. Models: `photon-1`
-  (default), `photon-flash-1` (faster fallback).
-- All ref images must be public CDN URLs; Luma does not accept
-  uploads.
+- Verified Luma agents API surface:
+  - `POST agents.lumalabs.ai/v1/generations` returns `201` with
+    `{id, state: "queued"}`. Poll `GET .../v1/generations/{id}` until
+    `state == "completed"`; the result URL is at `output[0].url`.
+  - `image_ref`: array of up to 9 entries, each `{url}` *or*
+    `{data, media_type}`. The only image-conditioning primitive on
+    this API; UNI-1 reads the reference's role from the prompt.
+  - Result URLs are presigned and expire ~1 hour after generation.
+  - UNI-1 has no public seed parameter — round-0 variance comes from
+    prompt jitter or model nondeterminism.
