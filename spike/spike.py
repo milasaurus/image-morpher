@@ -1,7 +1,8 @@
-"""image-morpher spike — round 0 → reference channel → round 1.
+"""image-morpher spike — round 0 → strategy → round 1.
 
-Validates the core hypothesis (LLM picks the right Luma reference
-channel from the user's preference signal) before any backend code.
+Validates the core hypothesis (LLM picks the right prompt strategy
+from the user's preference signal, UNI-1 honors the strategy when
+conditioned on the winner via image_ref) before any backend code.
 See `docs/plan.md` Unit 1 for the rationale.
 
 Run:
@@ -11,7 +12,7 @@ Run:
 
 Reads `LUMAAI_API_KEY` and `ANTHROPIC_API_KEY` from the OS env. The
 default winner is B; set `WINNER=A` to flip. Other knobs (prompt,
-model, weights) are likewise OS env vars — see config block below.
+model) are likewise OS env vars — see config block below.
 """
 
 from __future__ import annotations
@@ -27,13 +28,13 @@ from typing import Literal
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-from lumaai import AsyncLumaAI
+from luma_agents import AsyncLuma
 
 from system_prompt import SYSTEM_PROMPT
 
-# API keys come from the OS env. Per-run knobs (WINNER, SPIKE_PROMPT,
-# weights) can be set in .env if you don't want to export them; existing
-# OS env vars take precedence.
+# API keys come from the OS env. Per-run knobs (WINNER, SPIKE_PROMPT)
+# can be set in .env if you don't want to export them; existing OS env
+# vars take precedence.
 load_dotenv(override=False)
 
 # Fail with a friendly message if required keys are missing, rather
@@ -47,29 +48,26 @@ if _missing:
 # --- config -------------------------------------------------------------
 
 PROMPT = os.environ.get("SPIKE_PROMPT", "a vintage typewriter on a wooden desk")
-PHOTON_MODEL = os.environ.get("PHOTON_MODEL", "photon-1")
-# Default to Haiku — cheap, fast, vision-capable, plenty for routing
-# between three options. If the spike's channel-quality gate fails
-# (<3/5 agreement), try Sonnet via ANTHROPIC_MODEL=claude-sonnet-4-6
-# before concluding the LLM-routing idea itself is broken.
+LUMA_MODEL = os.environ.get("LUMA_MODEL", "uni-1")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 
-# Round 0 calls Photon twice with the same prompt. If the pair comes
+# Round 0 calls UNI-1 twice with the same prompt. If the pair comes
 # back near-identical, the loop has no A/B signal — at that point edit
 # this file to add prompt jitter (e.g. ", warm lighting" vs ", cool
 # lighting"). The jitter axis you pick frames what dimension the user
 # is voting on, so it's a deliberate edit, not a knob.
 
-# Per-channel weight defaults (the spike calibrates `style_ref` at
-# 0.4 / 0.6 / 0.8 by re-running with WEIGHT_STYLE_REF set).
-WEIGHT_STYLE_REF = float(os.environ.get("WEIGHT_STYLE_REF", "0.55"))
-WEIGHT_MODIFY_IMAGE_REF = float(os.environ.get("WEIGHT_MODIFY_IMAGE_REF", "0.85"))
+# Whether the new agents API accepts a `weight` field on image_ref
+# entries is open question #2 in the plan. Probe empirically: try
+# {"url": ..., "weight": 0.6} and see if the request is accepted. If
+# weight is rejected (400/422), drop it and use prompt-only conditioning.
+IMAGE_REF_WEIGHT: float | None = None  # set to e.g. 0.6 to probe
 
-# Photon's image API is async: create() enqueues a job and returns
-# immediately; we poll generations.get() until state == "completed".
-# POLL_INTERVAL is how often to check (seconds); POLL_TIMEOUT is the
-# overall deadline before raising GenerationTimeout. Photon usually
-# completes in 10–20s, so 180s is a generous safety net for stuck jobs.
+# Photon's image API was async; the agents API is the same shape:
+# generations.create() enqueues a job and returns immediately; we poll
+# generations.get() until state == "completed". POLL_INTERVAL is how
+# often to check (seconds); POLL_TIMEOUT is the overall deadline before
+# raising GenerationTimeout.
 POLL_INTERVAL = 2.0
 POLL_TIMEOUT = 180.0
 
@@ -87,33 +85,44 @@ class GenerationTimeout(Exception):
 
 # --- types --------------------------------------------------------------
 
-RefChannel = Literal["style_ref", "character_ref", "modify_image_ref"]
+Strategy = Literal["preserve_look", "preserve_subject", "tweak"]
 
 
 @dataclass
-class RefChannelChoice:
+class StrategyChoice:
     rationale: str
-    ref_channel: RefChannel
+    strategy: Strategy
     instruction: str
 
 
 # --- Luma helpers -------------------------------------------------------
 
-luma = AsyncLumaAI(auth_token=os.environ["LUMAAI_API_KEY"])
+luma = AsyncLuma(auth_token=os.environ["LUMAAI_API_KEY"])
 
 
-async def generate(prompt: str, **refs) -> str:
-    """Start a Photon generation, poll to completion, return image URL."""
-    gen = await luma.generations.image.create(
-        prompt=prompt,
-        model=PHOTON_MODEL,
-        **refs,
-    )
+def _image_ref_entry(url: str) -> dict:
+    entry: dict = {"url": url}
+    if IMAGE_REF_WEIGHT is not None:
+        entry["weight"] = IMAGE_REF_WEIGHT
+    return entry
+
+
+async def generate(prompt: str, image_ref: list[dict] | None = None) -> str:
+    """Start a UNI-1 generation, poll to completion, return image URL."""
+    kwargs: dict = {
+        "prompt": prompt,
+        "model": LUMA_MODEL,
+        "type": "image",
+        "output_format": "png",
+    }
+    if image_ref:
+        kwargs["image_ref"] = image_ref
+    gen = await luma.generations.create(**kwargs)
     deadline = time.monotonic() + POLL_TIMEOUT
     while True:
         gen = await luma.generations.get(id=gen.id)
         if gen.state == "completed":
-            return gen.assets.image
+            return gen.output[0].url
         if gen.state == "failed":
             raise GenerationFailed(gen.failure_reason or "unknown")
         if time.monotonic() > deadline:
@@ -123,52 +132,42 @@ async def generate(prompt: str, **refs) -> str:
         await asyncio.sleep(POLL_INTERVAL)
 
 
-async def generate_with_ref_channel(
-    choice: RefChannelChoice, anchor_url: str
+async def generate_with_anchor(
+    choice: StrategyChoice, anchor_url: str
 ) -> str:
-    """Apply the chosen reference channel to a fresh Photon call.
+    """Round-N: generate the next image with image_ref pinned to the anchor.
 
-    `character_ref` has no weight field in the SDK; silently exempt.
+    Strategy is metadata only — it informs the prompt the LLM wrote,
+    not the API call shape. The new agents API has just one
+    image-conditioning primitive (`image_ref`); UNI-1 reads the
+    reference's role from the prompt itself.
     """
-    if choice.ref_channel == "style_ref":
-        return await generate(
-            choice.instruction,
-            style_ref=[{"url": anchor_url, "weight": WEIGHT_STYLE_REF}],
-        )
-    if choice.ref_channel == "character_ref":
-        return await generate(
-            choice.instruction,
-            character_ref={"identity0": {"images": [anchor_url]}},
-        )
-    if choice.ref_channel == "modify_image_ref":
-        return await generate(
-            choice.instruction,
-            modify_image_ref={"url": anchor_url, "weight": WEIGHT_MODIFY_IMAGE_REF},
-        )
-    raise ValueError(f"unknown reference channel: {choice.ref_channel}")
+    return await generate(
+        choice.instruction, image_ref=[_image_ref_entry(anchor_url)]
+    )
 
 
-# --- Claude reference-channel picker ------------------------------------
+# --- Claude strategy picker --------------------------------------------
 
 claude = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
-async def choose_ref_channel(
+async def choose_strategy(
     prompt: str, winner_url: str, runner_up_url: str
-) -> RefChannelChoice:
-    """Ask Claude which Luma reference channel to use for the next round.
+) -> StrategyChoice:
+    """Ask Claude which strategy to use for the next round.
 
     Inputs:
         prompt: the original text prompt that produced both images.
         winner_url: public Luma CDN URL of the image the user picked.
         runner_up_url: public Luma CDN URL of the other round-0 image.
 
-    Returns a RefChannelChoice with:
+    Returns a StrategyChoice with:
         rationale: 1–2 sentences on why B won (free text).
-        ref_channel: one of style_ref / character_ref / modify_image_ref.
-        instruction: a self-contained text prompt for the next Photon
+        strategy: one of preserve_look / preserve_subject / tweak.
+        instruction: a self-contained text prompt for the next UNI-1
             call (NOT a constraint description — see Decision 4 in
             docs/plan.md).
 
@@ -198,18 +197,18 @@ async def choose_ref_channel(
     if not m:
         raise ValueError(f"no JSON in LLM response: {text!r}")
     data = json.loads(m.group(0))
-    return RefChannelChoice(
+    return StrategyChoice(
         rationale=data["rationale"],
-        ref_channel=data["ref_channel"],
+        strategy=data["strategy"],
         instruction=data["instruction"],
     )
 
 
 # --- main ---------------------------------------------------------------
 
-# main is async because round 0 fires two Photon calls in parallel via
+# main is async because round 0 fires two UNI-1 calls in parallel via
 # asyncio.gather. Sequentially each ~10–20s; concurrently ~half. The
-# Luma and Anthropic SDKs return coroutines (we use AsyncLumaAI /
+# Luma and Anthropic SDKs return coroutines (we use AsyncLuma /
 # AsyncAnthropic), which require `await`, which requires `async def`.
 
 
@@ -219,7 +218,7 @@ async def main() -> None:
 
     print("Round 0: generating A and B in parallel…")
     t0 = time.monotonic()
-    # a_url and b_url are public Luma CDN URLs to the images Photon
+    # a_url and b_url are public Luma CDN URLs to the images UNI-1
     # just generated — Claude fetches them directly in the next step.
     a_url, b_url = await asyncio.gather(
         generate(PROMPT),
@@ -239,25 +238,25 @@ async def main() -> None:
     print(f"Winner (set WINNER=A or =B in .env to override): {winner_label}")
     print()
 
-    print("Asking Claude to pick a reference channel…")
+    print("Asking Claude to pick a strategy…")
     t1 = time.monotonic()
-    choice = await choose_ref_channel(PROMPT, winner_url, runner_up_url)
+    choice = await choose_strategy(PROMPT, winner_url, runner_up_url)
     elapsed = time.monotonic() - t1
     print(f"  Rationale:    {choice.rationale}")
-    print(f"  Ref channel:  {choice.ref_channel}")
+    print(f"  Strategy:     {choice.strategy}")
     print(f"  Instruction:  {choice.instruction!r}")
     print(f"  Claude elapsed: {elapsed:.1f}s")
     print()
 
-    print(f"Round 1: generating new B with ref_channel={choice.ref_channel}…")
+    print(f"Round 1: generating new B with strategy={choice.strategy}…")
     t2 = time.monotonic()
-    new_b = await generate_with_ref_channel(choice, anchor_url=winner_url)
+    new_b = await generate_with_anchor(choice, anchor_url=winner_url)
     elapsed = time.monotonic() - t2
     print(f"  New B: {new_b}")
     print(f"  Round 1 elapsed: {elapsed:.1f}s")
     print()
     print("Open in a browser. Compare new B to the winner.")
-    print("Did the reference channel feel like the right choice?")
+    print("Did the strategy feel like the right choice?")
 
 
 if __name__ == "__main__":

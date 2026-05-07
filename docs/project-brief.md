@@ -10,15 +10,14 @@ and a new candidate "B" is generated alongside it, refined in the
 direction of what you liked. You keep picking until you're happy, then
 export.
 
-The interesting part is what happens between rounds: an LLM looks at both
-images, reasons about why you picked the winner, and decides which of
-Luma's reference channels to use for the next generation — style,
-character, or surgical edit. You can override its choice. Each round the
-search space narrows. You're doing gradient descent on an image, with
-yourself as the loss function.
+The interesting part is what happens between rounds: an LLM looks at
+both images, reasons about why you picked the winner, and decides what
+*shape* of prompt to write next — one that preserves B's look, B's
+subject, or tweaks B surgically. You can override its choice. Each
+round the search space narrows. You're doing gradient descent on an
+image, with yourself as the loss function.
 
-Built on the Dream Machine API (Photon image generation, with UNI-1
-reference primitives). Weekend-scope prototype.
+Built on Luma's agents API (UNI-1). Weekend-scope prototype.
 
 ## Why this project
 
@@ -37,41 +36,52 @@ gotten with one prompt.
 
 ## The core hypothesis
 
-Luma's API exposes three different reference channels:
-`style_ref`, `character_ref`, `modify_image_ref` (plus generic
-`image_ref`). The docs don't tell you when to use which. When a user
-prefers image B over image A, the *interesting* product problem is:
-**which reference channel does the user's preference signal map to?**
+Luma's agents API exposes a single image-conditioning primitive
+(`image_ref`); UNI-1 interprets the user's intent from natural-language
+prompts. When a user prefers image B over image A, the *interesting*
+product problem is: **what shape of prompt encodes the kind of
+preference signal the user gave?**
 
-- "I like B's mood but A's subject" → `style_ref` from B,
-  `character_ref` from A
-- "I like B but want it bolder" → `modify_image_ref` on B with a
-  text diff
-- "I like B's whole vibe" → `image_ref` from B with high weight
+- "I like B's mood but A's subject" → a *preserve-look* prompt
+  (e.g. "similar mood and lighting, different subject")
+- "I like B's whole subject" → a *preserve-subject* prompt
+  (e.g. "the same character/object, different scene")
+- "I like B but want it bolder" → a *tweak* prompt (e.g. "the same
+  image but moodier")
 
-An LLM proposes the reference channel. The user can override. The
-build will surface real findings about when this routing is right and
-when it isn't.
+An LLM proposes the strategy and writes the resulting prompt. The
+user can override the strategy. The build will surface findings about
+when this language-only routing is right and when it isn't.
+
+This is a deliberate pivot from an earlier draft that assumed three
+distinct API channels (`style_ref` / `character_ref` /
+`modify_image_ref`). Luma migrated to a single `image_ref` primitive
+in their April 2026 agents API; the spike (Unit 1) surfaced this on
+day 0 — exactly what the spike is for. Routing now happens entirely
+in language, which makes the hypothesis *harder* and arguably more
+interesting: the LLM has to encode strategy choice into prose UNI-1
+will honor, not into a structured field.
 
 ## MVP scope (what ships)
 
 The single bet: **anchored A/B refinement loop on a single image.**
 
 ### In scope
-- Text prompt → two parallel Photon generations (round 0, no anchor)
+- Text prompt → two parallel UNI-1 generations (round 0, no anchor)
 - Click-to-pick A/B UI
 - Anchored loop: winner persists as A, one new candidate generated as
-  B each subsequent round
+  B each subsequent round (round-N calls UNI-1 with `image_ref` set
+  to the winner URL).
 - LLM reasoning step per round: given (prompt, current winner, last
-  runner-up), output JSON `{rationale, ref_channel, instruction}` where
-  `ref_channel ∈ {style_ref, character_ref, modify_image_ref}`.
-  Per-channel weight defaults live in backend config, calibrated
-  empirically (logged in NOTES.md), *not* asked of the LLM — it has
-  never seen what 0.3 vs 0.7 looks like on Luma.
-- Chosen reference channel and rationale revealed *after* B generates
-  (subtitle on B, e.g. *"Went with `style_ref` because: …"*). Override
-  dropdown applies to the *next* round, not the current one — the
-  user's escape hatch when Claude misroutes.
+  runner-up), output JSON `{rationale, strategy, instruction}` where
+  `strategy ∈ {preserve_look, preserve_subject, tweak}`. The
+  strategy is metadata for UI/logging/override; the `instruction`
+  is the actual next-round prompt the LLM writes in that strategy's
+  shape.
+- Chosen strategy and rationale revealed *after* B generates (subtitle
+  on B, e.g. *"Kept the look because: …"*). Override dropdown applies
+  to the *next* round, not the current one — the user's escape hatch
+  when Claude misroutes.
 - "Done" button → PNG download.
 - README with `uv run` (backend) + `npm run dev` (frontend) setup.
 - `NOTES.md` capturing weird findings as I build.
@@ -86,12 +96,11 @@ The single bet: **anchored A/B refinement loop on a single image.**
 - Speculative pre-generation of round N+1 to mask latency
   (interesting if 8-15 round sessions feel slow; YAGNI for MVP)
 - **Preference chip** (`mood` / `subject` / `composition` / `bolder`)
-  feeding the reference-channel prompt — was insurance against an
-  unproven risk; add only if Unit 6 shows the LLM-alone path is
-  wobbly.
+  feeding the strategy prompt — was insurance against an unproven
+  risk; add only if Unit 6 shows the LLM-alone path is wobbly.
 - **"Both bad" re-roll button** — escape hatch; substitute is "pick
-  the less-bad one and override the reference channel for next round".
-- **History rail** with thumbnails + channel badges — visual progress
+  the less-bad one and override the strategy for next round".
+- **History rail** with thumbnails + strategy badges — visual progress
   indicator; the active pair is the only thing that affects outcomes.
 
 ### Fast-follow (v2 candidates after the prototype ships)
@@ -111,10 +120,9 @@ Both options were on the table. Anchored wins because:
 ## Stack
 
 - React frontend (Vite, no SSR), TypeScript
-- Python backend (FastAPI), Luma Python SDK (`lumaai>=1.21`)
-- Anthropic Python SDK (`anthropic`) for the reference-channel
-  selection reasoning step, vision-capable model so it can see both
-  images
+- Python backend (FastAPI), Luma agents Python SDK (`luma-agents`)
+- Anthropic Python SDK (`anthropic`) for the strategy-selection
+  reasoning step, vision-capable model so it can see both images
 - No hosted infra — anyone can clone and run with their own keys
 - Personal GitHub repo
 
@@ -126,15 +134,16 @@ Single Python file, no UI, no FastAPI. Validates the loop works
 end-to-end before committing to UI. See `spike/spike.py`:
 
 1. Hardcode a prompt
-2. Call Photon twice in parallel, get two image URLs
+2. Call UNI-1 twice in parallel, get two image URLs
 3. Call Claude with both URLs + the prompt, get back the
-   reference-channel JSON
-4. Use the JSON to construct the next Photon call (round 1)
+   strategy + instruction JSON
+4. Use the JSON to construct the next UNI-1 call with `image_ref`
+   pointing at the winner
 5. Print everything to console
 6. On 5 hand-picked obvious A/B pairs, eyeball whether Claude's
-   channel pick agrees ≥3 times.
+   strategy pick agrees ≥3 times.
 
-Go/no-go gate: ≥3/5 channel agreement. If the LLM is shakier than
+Go/no-go gate: ≥3/5 strategy agreement. If the LLM is shakier than
 that, sharpen the prompt, pivot the README narrative ("why this is
 harder than it looks"), or demote the LLM step to a simpler A/B
 refiner — better to learn this on Day 0 than Sunday of Weekend 2.
@@ -148,13 +157,13 @@ Loop convergence is judged by *using* the prototype during Weekend
   `POST /generate` endpoint that does two parallel calls via
   `asyncio.gather`. React skeleton with prompt input and A/B
   display. Click-to-pick. End of day: round 0 works manually.
-- Day 2: LLM reasoning step. Reference-channel selection. Round N
-  logic. End of weekend: full loop works end-to-end, ugly but
-  functional.
+- Day 2: LLM reasoning step. Strategy selection + instruction
+  authoring. Round N logic. End of weekend: full loop works
+  end-to-end, ugly but functional.
 
 ### 2 — polish + ship
 
-- Day 1: Reference-channel override UI, "Done" → PNG export, README.
+- Day 1: Strategy override UI, "Done" → PNG export, README.
 - Day 2: NOTES.md cleanup, edge cases (API failures, slow
   generations), deploy-free path (`uv run` for backend +
   `npm run dev` for frontend), ship.
@@ -163,17 +172,19 @@ Loop convergence is judged by *using* the prototype during Weekend
 
 Validate in the spike, not assume:
 
-1. **Round 0 variance.** Does calling Photon twice with identical
-   input return two different images? If not, append distinct
-   semantic seeds (`"warm lighting"` for A, `"cool lighting"` for B)
-   — neutral nonces may collapse to the same latent.
+1. **Round-0 variance.** Does calling UNI-1 twice with identical input
+   return two different images? If not, append distinct semantic
+   seeds (`"warm lighting"` for A, `"cool lighting"` for B) — neutral
+   nonces may collapse to the same latent.
 
-2. **`style_ref` weight calibration.** What value feels like "carry
-   the vibe" vs "near-duplicate"? Probe empirically; bake into
-   `config.py`; log the trio in `NOTES.md`.
+2. **Does `image_ref` accept a `weight` field on the new agents API?**
+   The current docs page lists `url` / `data` / `media_type` only; the
+   old API had a `weight` knob. Probe empirically; if accepted,
+   calibrate. If not, treat conditioning strength as a prompt-only
+   knob (e.g. "loosely inspired by …" vs "matching exactly the
+   composition of …").
 
-3. **Image URL TTL.** Do Luma URLs survive ~30 min from generation?
-   If shorter, document it in the README. Don't build a proxy.
+(URL TTL is documented as 1 hour on the new API — already answered.)
 
 Loop convergence and latency-feel are answered while *using* the
 prototype — log surprises in `NOTES.md` as they happen.
@@ -189,44 +200,51 @@ URL (both from previous round)
 
 > You're helping refine an image generation. The user picked image B
 > over image A, both generated from this prompt: "...". Reason about
-> what's better in B compared to A. Then propose ONE refinement for
-> the next round.
+> what's better in B compared to A. Then choose ONE strategy for the
+> next round and write a self-contained image-generation prompt that
+> embodies that strategy.
 >
-> Choose exactly one of these reference channels:
-> - `style_ref`: preserve B's visual style, allow subject variation
-> - `character_ref`: preserve B's subject identity, allow scene
->   variation
-> - `modify_image_ref`: surgical edit on B following a text
->   instruction
+> Strategies:
+> - `preserve_look`: keep B's visual style/mood/lighting, allow
+>   subject variation. The prompt should describe the new subject
+>   and inherit B's stylistic adjectives.
+> - `preserve_subject`: keep B's subject identity, allow scene
+>   variation. The prompt should name B's subject and describe a new
+>   context.
+> - `tweak`: surgical edit on B. The prompt should be a near-copy of
+>   the original with a focused change ("the same image but moodier").
 >
 > Output JSON only:
 > {
 >   "rationale": "<1-2 sentences on why B won>",
->   "ref_channel": "style_ref" | "character_ref" | "modify_image_ref",
->   "instruction": "<text instruction for the next generation>"
+>   "strategy": "preserve_look" | "preserve_subject" | "tweak",
+>   "instruction": "<self-contained image-generation prompt for next round>"
 > }
 
-The JSON output deterministically routes to the correct Luma API
-call construction in the backend. `weight` is *not* asked of the LLM
-— per-channel defaults live in backend config (calibrated empirically;
-see open question #2).
+The backend uses `instruction` as the literal `prompt` argument to
+the next UNI-1 call, with `image_ref=[{"url": <winner_url>}]`. The
+`strategy` field is metadata — it drives the UI subtitle, the
+override dropdown, and the gate-test ("did Claude pick the strategy I
+would have?"). It does *not* dispatch to different API calls; the
+new API has only one image-conditioning primitive.
 
 ## Reference: Luma API capabilities used
 
-From https://docs.lumalabs.ai/docs/image-generation:
+From https://docs.agents.lumalabs.ai/guides/image-generation/ (current
+agents API; the older Dream Machine API at api.lumalabs.ai is
+deprecated for new keys):
 
-- `POST /dream-machine/v1/generations/image` — text-to-image
-  (Photon)
-- `image_ref`: up to 4 image URLs, each with `weight` (general
-  vibe carry-forward)
-- `style_ref`: image URL + weight (visual style only)
-- `character_ref`: identity-keyed dict, up to 4 images per
-  identity (subject identity)
-- `modify_image_ref`: single image URL + text prompt + weight
-  (surgical edit)
-- All ref images must be public CDN URLs — Luma does not accept
-  uploads
-- Responses are async; poll generation by ID or use `callback_url`
+- `POST agents.lumalabs.ai/v1/generations` — text-to-image
+- Model: `uni-1` (UNI-1)
+- `type: "image"`, `output_format: "png"` (or others)
+- `image_ref` — array of up to 9 reference entries; each entry has
+  `{url}` *or* `{data, media_type}` (base64 inline). The only
+  image-conditioning primitive on this API; UNI-1 interprets the
+  reference's role from the prompt itself
+- Image URLs in responses are presigned and expire after ~1 hour
+- Polling: `GET agents.lumalabs.ai/v1/generations/{id}` until
+  `state == "completed"`; the result URL is at `output[0].url`
+- Auth: `Authorization: Bearer <LUMAAI_API_KEY>` header
 
 ## Success criteria
 
@@ -236,8 +254,8 @@ From https://docs.lumalabs.ai/docs/image-generation:
   like part of the craft, not a wait.
 - README makes the project clone-and-run on any machine with
   Python 3.11+, Node, a Luma API key, and an Anthropic API key.
-- `NOTES.md` has at least 5 substantive findings about UNI-1 / Photon
-  behaviour, with the strongest finding leading.
+- `NOTES.md` has at least 5 substantive findings about UNI-1 / Luma
+  agents API behaviour, with the strongest finding leading.
 
 ## Tone & style for the codebase
 
