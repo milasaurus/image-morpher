@@ -72,11 +72,11 @@ ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 # weight is rejected (400/422), drop it and use prompt-only conditioning.
 IMAGE_REF_WEIGHT: float | None = None  # set to e.g. 0.6 to probe
 
-# Photon's image API was async; the agents API is the same shape:
-# generations.create() enqueues a job and returns immediately; we poll
-# generations.get() until state == "completed". POLL_INTERVAL is how
-# often to check (seconds); POLL_TIMEOUT is the overall deadline before
-# raising GenerationTimeout.
+# UNI-1's image API is async: generations.create() enqueues a job and
+# returns immediately; we poll generations.get() until state ==
+# "completed". POLL_INTERVAL is how often to check (seconds);
+# POLL_TIMEOUT is the overall deadline before raising
+# GenerationTimeout.
 POLL_INTERVAL = 2.0
 POLL_TIMEOUT = 180.0
 
