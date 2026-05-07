@@ -9,10 +9,9 @@ origin: docs/project-brief.md
 # image-morpher prototype — implementation plan
 
 A weekend-scope prototype. User types a prompt → two parallel UNI-1
-generations → click winner → an LLM picks one of three prompt
-*strategies* (`preserve_look` / `preserve_subject` / `tweak`) and
-writes a strategy-flavoured prompt for the next round → user can
-override the strategy → repeat → "Done" → PNG download.
+generations → click winner → pick one of three intents (Refine this
+/ New subject, same look / New scene, same subject) → an LLM writes
+a prompt that embodies that intent → repeat → "Done" → PNG download.
 
 Audience: designers / mood-board creators iterating 8–15 rounds on a
 single image. See `docs/project-brief.md` for product context.
@@ -48,17 +47,21 @@ appropriately.
 - **R3.** Anchored loop: winner persists as A; one new candidate B is
   generated each subsequent round.
 
-**LLM reasoning**
+**Intent and LLM reasoning**
 
-- **R4.** LLM strategy selection per round, returning JSON
-  `{rationale, strategy, instruction}` with `strategy ∈
-  {preserve_look, preserve_subject, tweak}`. The `instruction` is the
-  literal prompt for the next UNI-1 call; `image_ref` always points
-  at the winner URL (Decision 3).
-- **R5.** Chosen strategy and rationale revealed *after* B generates,
-  surfaced via plain-language label (Decision 6). Override dropdown
-  applies to the next round, not the current one — the user's escape
-  hatch when Claude misroutes.
+- **R4.** **User picks the strategy, not the LLM.** After clicking the
+  winner, the user picks one of three intents that maps to a strategy:
+  🎯 *Refine this* (`tweak`), 🎨 *New subject, same look*
+  (`preserve_look`), 🌐 *New scene, same subject*
+  (`preserve_subject`). The strategy is sent to the backend as a
+  request input. (See Decision 7 for the rationale; the original
+  LLM-routes design failed Unit 1's gate.)
+- **R5.** LLM writes the next-round prompt given (winner, runner-up,
+  prompt, **user-picked strategy**). Returns JSON
+  `{rationale, instruction}`. The `instruction` is the literal prompt
+  for the next UNI-1 call; `image_ref` always points at the winner
+  URL (Decision 3). The rationale is shown next to B as a subtitle so
+  the user can see *why* this image came out the way it did.
 
 **Ship and findings**
 
@@ -92,7 +95,8 @@ them:
   feeding the strategy prompt — was insurance against an unproven risk;
   add only if Unit 6 shows the LLM-alone path is wobbly.
 - **"Both bad" re-roll button** — escape hatch; substitute is "pick
-  the less-bad one and override for next round", or click Done.
+  the less-bad one and choose `Refine this` for next round", or
+  click Done.
 - **History rail** with thumbnails + channel badges — visual progress
   indicator; the active pair is the only thing that affects outcomes.
 - **Demo GIF in the README** — fast-follow once the prototype ships;
@@ -138,13 +142,13 @@ Sunday-afternoon-when-scope-creep-is-loud rules:
 1. **Single endpoint.** `POST /api/round` handles both round-0 and
    round-N off the request shape (`winner_url is None` → round 0).
    Cuts duplicate client logic.
-2. **Override skips Claude.** When the user has set an override
-   strategy, the backend builds a synthetic `StrategyChoice`
-   (`instruction = prompt`, `strategy = override`) and skips the LLM.
-   Acceptable cost: override mode reuses the original prompt rather
-   than authoring a strategy-flavoured one, so output drift is small
-   round-over-round. Users who override have explicitly opted out of
-   LLM authorship.
+2. **Strategy is a user input, not an LLM output.** After the winner
+   click, the user picks one of three intents (Refine this / New
+   subject, same look / New scene, same subject) and the choice is
+   sent to the backend. The LLM writes the next-round prompt
+   *conditional* on that strategy. There is no override dropdown
+   anymore — the picker IS the override. (See Decision 7 for why we
+   moved away from LLM-as-router.)
 3. **`image_ref` is always the winner; `weight` is empirical.** The
    round-N call is always
    `generate(prompt=instruction, image_ref=[{url: winner}])`. There
@@ -160,11 +164,25 @@ Sunday-afternoon-when-scope-creep-is-loud rules:
    becomes the literal UNI-1 prompt and loses the original subject.
 5. **Round-N response carries only the new B URL.** Frontend retains
    the prior winner from local state. Backend is stateless.
-6. **Plain-language strategy labels in the UI.** `preserve_look` →
-   "Keep the look", `preserve_subject` → "Keep the subject", `tweak`
-   → "Tweak it". Translation table in
-   `web/src/components/StrategySubtitle.tsx`. Strategy enum values
-   never reach the user.
+6. **Plain-language strategy labels in the UI.** `tweak` → "Refine
+   this", `preserve_look` → "New subject, same look",
+   `preserve_subject` → "New scene, same subject". Translation tables
+   in `web/src/components/StrategyPicker.tsx` (button labels) and
+   `web/src/components/StrategySubtitle.tsx` (B's subtitle on the
+   prior round). Strategy enum values never reach the user.
+7. **LLM-as-router was empirically dead-ended in Unit 1.** Original
+   design had Claude pick the strategy from the two image URLs
+   alone. Two gate cases (typewriter, wolf-howling-at-moon) showed
+   Claude can't reliably infer user intent from pixels — even when
+   it correctly identifies *why* B beat A, it can't tell whether the
+   user wants that quality applied to the same subject or a new one.
+   Strategy moved to explicit user input; LLM keeps the
+   prompt-authoring role. Findings logged in `NOTES.md`. The original
+   "≥3/5 strategy agreement" gate is retired; the new gate is "given
+   a user-picked strategy, does Claude write a prompt that embodies
+   it?" — measured during Unit 1's continued probing and Unit 6's
+   smoke.
+
 ## Open questions to validate while building
 
 - **Round-0 variance / jitter need.** Does UNI-1 return materially
@@ -203,12 +221,12 @@ sequenceDiagram
   end
   A-->>W: { images: [A, B], strategy: null }
 
-  U->>W: click winner (B)
-  W->>A: POST /api/round { prompt, winner=B, runner_up=A }
-  A->>C: choose_strategy(prompt, B, A)
-  C-->>A: { rationale, strategy, instruction }
+  U->>W: click winner (B), pick intent (Refine / New subject / New scene)
+  W->>A: POST /api/round { prompt, winner=B, runner_up=A, strategy }
+  A->>C: write_instruction(prompt, B, A, strategy)
+  C-->>A: { rationale, instruction }
   A->>L: generate(instruction, image_ref=[{url: B}])
-  A-->>W: { images: [newB], strategy: {...} }
+  A-->>W: { images: [newB], rationale, strategy }
 
   U->>W: click "Done"
   W->>U: download PNG
@@ -219,21 +237,23 @@ sequenceDiagram
 ```
 idle ──[submit]──▶ generating
 generating ──[ok]──▶ picking
-picking ──[click winner]──▶ generating  (sends pendingOverride if set)
+picking ──[click winner]──▶ choosing_intent
+choosing_intent ──[pick intent]──▶ generating
 picking ──[click "Done"]──▶ done
 generating ──[error]──▶ error ──[retry]──▶ generating
 ```
 
-In `picking`, the override dropdown is input-only. `pendingOverride`
-resets after each round-N submit.
+`choosing_intent` is the moment between picking the winner and
+firing the next-round request — the user picks one of three
+strategy buttons. There is no separate override dropdown; the
+picker is always shown.
 
 ## Implementation units
 
 ### Unit 1: Spike (Day 0 precondition)
 
 Single-file Python spike. Validates the round-0 → strategy → round-1
-loop end-to-end before any backend code. Acts as the go/no-go gate
-on the core hypothesis.
+loop end-to-end before any backend code.
 
 Files: `spike/spike.py`, `spike/system_prompt.py`,
 `spike/pyproject.toml`, `spike/.env.example`, `spike/README.md`,
@@ -246,8 +266,20 @@ Approach:
   near-identical on the bare prompt, edit the spike to append
   distinct semantic modifiers to each call (jitter — see Open
   Questions).
-- On 5 hand-picked A/B pairs where the right strategy feels obvious
-  to you, check whether Claude agrees ≥3 times.
+- **Prompt the user for an intent at the console** after they pick
+  the winner. Three options mapped to `tweak` / `preserve_look` /
+  `preserve_subject`. The chosen strategy is passed to
+  `write_instruction()` as input — Claude does not pick the
+  strategy itself. This shape was validated during the spike's
+  earlier runs: two cases (typewriter, wolf-howling-at-moon) showed
+  Claude can't reliably infer user intent from images alone, so
+  routing was moved to explicit user input. See Decision 7 and
+  `NOTES.md` for the full reasoning.
+- Run 5+ hand-picked prompts under each strategy. Eyeball whether
+  Claude's `instruction` actually embodies the strategy the user
+  chose (e.g., when user picks `tweak`, does the instruction stay
+  close to the original subject? When user picks `preserve_look`,
+  does the instruction inherit B's stylistic adjectives?).
 - Probe whether `image_ref` accepts a `weight` field (open question
   #2). If yes, calibrate at 0.4 / 0.6 / 0.8 and log the trio in
   `NOTES.md`. If no, log that finding and note conditioning is
@@ -256,14 +288,14 @@ Approach:
 Loop convergence is not measured here — judged in real use during
 Units 5/6.
 
-Verification (go/no-go):
+Verification:
 
-- ≥3/5 strategy agreement on hand-picked obvious cases. If <3/5,
-  decide before Unit 2: sharpen the prompt, pivot the README
-  narrative, or demote the LLM step to a simpler A/B refiner.
-- `NOTES.md` logs round-0 variance, strategy agreement count,
-  `image_ref` weight result, cold/p50 latency, and the API-migration
-  finding.
+- For each user-picked strategy, Claude's instruction produces a
+  round-1 image that visibly embodies the strategy on ≥3/5 cases.
+  This is a *prompt-authoring* gate, not a routing gate (the routing
+  gate was retired — see Decision 7).
+- `NOTES.md` logs round-0 variance, per-strategy authoring quality,
+  `image_ref` weight result, cold/p50 latency.
 
 ---
 
@@ -294,8 +326,8 @@ Approach:
     `GET /v1/generations/{id}` every 2s with a 180s overall timeout.
     Raises `GenerationFailed` on `state == "failed"`,
     `GenerationTimeout` on deadline. Returns `output[0].url`.
-  - `async def generate_with_anchor(strategy_choice, anchor_url) -> str`
-    is a one-liner: `await generate(strategy_choice.instruction,
+  - `async def generate_with_anchor(written: WrittenInstruction, anchor_url) -> str`
+    is a one-liner: `await generate(written.instruction,
     image_ref=[{"url": anchor_url}])` (plus weight if accepted).
     Kept as a function for symmetry with the spike, but trivial.
 
@@ -306,7 +338,7 @@ Verification: `uv run pytest` passes; module imports cleanly.
 
 ---
 
-### Unit 3: Pydantic models, strategy selection, /api/round endpoint
+### Unit 3: Pydantic models, instruction authoring, /api/round endpoint
 
 Wire the FastAPI route. Single endpoint dispatches on request shape.
 
@@ -317,25 +349,32 @@ Approach:
 
 - `models.py`:
   - `Strategy = Literal["preserve_look", "preserve_subject", "tweak"]`
-  - `StrategyChoice`: `rationale, strategy, instruction`.
-  - `RoundRequest`: `prompt, winner_url, runner_up_url, override_strategy`.
-  - `RoundResponse`: `images, strategy: StrategyChoice | None`.
+  - `WrittenInstruction`: `rationale, instruction` (no `strategy`
+    field — it came in as a request input, not an LLM output).
+  - `RoundRequest`: `prompt, winner_url, runner_up_url, strategy`.
+    `strategy` is required for round-N (`winner_url` is set);
+    omitted/null for round 0.
+  - `RoundResponse`: `images, rationale: str | None,
+    strategy: Strategy | None`. The strategy echoed back is the one
+    the user picked, useful for the frontend's subtitle.
   - `ErrorResponse`: `error: Literal[...], detail`.
-- `strategy.py`: `async def choose_strategy(prompt, winner, runner_up) ->
-  StrategyChoice`. Anthropic SDK; model from `settings.ANTHROPIC_MODEL`.
-  System prompt teaches the three strategies and how each shapes the
-  `instruction`. Robust JSON extraction (regex first `{...}` block).
-- `main.py` `POST /api/round` handles three cases:
+- `strategy.py`: `async def write_instruction(prompt, winner,
+  runner_up, strategy) -> WrittenInstruction`. Anthropic SDK; model
+  from `settings.ANTHROPIC_MODEL`. System prompt teaches what each
+  strategy means and how its `instruction` should be shaped — but
+  the strategy is a request *input*, not something Claude picks.
+  Robust JSON extraction (regex first `{...}` block).
+- `main.py` `POST /api/round` handles two cases:
   - `winner_url is None` → round 0 (`asyncio.gather` two `generate`
-    calls).
-  - `override_strategy` set → synthetic `StrategyChoice`
-    (`instruction = request.prompt`); skip Claude.
-  - Else → `choose_strategy` then `generate_with_anchor`.
+    calls). Strategy is ignored.
+  - Else → `write_instruction(prompt, winner, runner_up, strategy)`
+    then `generate(instruction, image_ref=[{url: winner}])`.
 - On failure, return typed `ErrorResponse` with appropriate 5xx.
 
-Tests: strategy happy path; strategy bad-JSON; endpoint round-0;
-endpoint round-N; endpoint override path skips `choose_strategy`;
-endpoint surfaces `GenerationFailed` as 502.
+Tests: instruction happy path under each strategy; bad-JSON;
+endpoint round-0; endpoint round-N for each strategy passes the
+right value through to `write_instruction`; endpoint surfaces
+`GenerationFailed` as 502; round-N missing `strategy` returns 422.
 
 Verification: `uv run pytest` passes; `curl` round-0 returns two URLs.
 
@@ -355,8 +394,9 @@ Approach:
 
 - `npm create vite@latest -- --template react-ts`. Strip boilerplate.
 - `types.ts` mirrors `api/app/models.py` by hand. `Strategy` is a
-  `Literal` of three string values; `StrategyChoice` carries
-  `rationale`, `strategy`, `instruction`.
+  `Literal` of three string values; `WrittenInstruction` carries
+  `rationale` and `instruction`. Strategy is a request input, not
+  a response field on the LLM output.
 - `api.ts` exposes `postRound(req): Promise<RoundResponse>`. On
   non-2xx, parse `ErrorResponse`, throw `Error` carrying the
   `error` discriminator.
@@ -376,32 +416,43 @@ backend; `npm run test` passes.
 
 ---
 
-### Unit 5: Round-N flow, strategy subtitle, override
+### Unit 5: Round-N flow, intent picker, strategy subtitle
 
-Full anchored loop with plain-language strategy surfacing and
-next-round override.
+Full anchored loop with explicit intent picking and rationale
+surfacing.
 
 Files: modify `App.tsx`, `ImagePair.tsx`, `styles.css`,
-`App.test.tsx`. Create `StrategySubtitle.tsx` and its test.
+`App.test.tsx`. Create `StrategyPicker.tsx`,
+`StrategySubtitle.tsx`, and their tests.
 
 Approach:
 
 - Click winner: set `currentPair.a = winner`, clear `currentPair.b`,
-  transition to `generating`. Fire `postRound({prompt, winner,
-  runner_up, override_strategy: pendingOverride})`. Reset
-  `pendingOverride` after firing.
+  show `StrategyPicker` (three buttons), transition state to
+  `choosing_intent`. Do *not* fire the request yet.
+- User clicks one of the three buttons → fire `postRound({prompt,
+  winner, runner_up, strategy: <picked>})`, transition to
+  `generating`.
 - Round-N response: set `currentPair.b = response.images[0]`,
-  `currentStrategy = response.strategy`. Transition to `picking`.
-- `StrategySubtitle`: hidden on round 0 via `visibility: hidden` with
-  `min-height` (do *not* `display: none` — collapses layout). Round
-  N+: plain-language label + rationale truncated to ~140 chars,
-  expandable. Override `<select>`: Auto / Keep the look / Keep the
-  subject / Tweak it. Pending-override badge when set.
+  `currentRationale = response.rationale`,
+  `currentStrategy = response.strategy`. Transition back to
+  `picking`.
+- `StrategyPicker`: three buttons in a row — 🎯 Refine this · 🎨 New
+  subject, same look · 🌐 New scene, same subject. Visible only in
+  `choosing_intent`. Buttons map to `tweak` / `preserve_look` /
+  `preserve_subject` per Decision 6. Single-click commits.
+- `StrategySubtitle`: hidden on round 0 via `visibility: hidden`
+  with `min-height` (do *not* `display: none` — collapses layout).
+  Round N+: plain-language label of the strategy that produced this
+  B (e.g. "Refining this") + rationale truncated to ~140 chars,
+  expandable. No override dropdown — the picker on the next round
+  IS the override.
 
-Tests: round-N flow renders new B + strategy subtitle; override
-applies to next round; pending override resets after use; clears on
-"Done"; StrategySubtitle hidden on round 0; strategy-name translation
-never exposes the enum value.
+Tests: round-N flow with each strategy renders new B + correct
+subtitle label; picker buttons each fire a request with the right
+`strategy` value; user can't fire round-N without picking; picker
+hidden on round 0; strategy-name translation never exposes the enum
+value.
 
 Verification: manual loop — pick 10 in a row; loop stays coherent;
 strategy subtitle updates each round.
@@ -442,7 +493,8 @@ Tests: Save-image anchor renders correctly; `ErrorBanner` renders +
 retry recovers; Done state shows Start over.
 
 Verification: manual smoke — prompt → 10 picks → done. PNG
-downloads. Loop stays coherent. ≥1 pick uses an override. Force
+downloads. Loop stays coherent. Different strategies used across
+the 10 picks. Force
 network error in devtools — banner appears, retry recovers. README's
 quickstart works on a fresh clone.
 
