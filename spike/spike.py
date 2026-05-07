@@ -9,10 +9,12 @@ Run:
 
     cd spike && uv sync
     uv run python spike.py
+    uv run python spike.py "a wolf howling at the moon"   # one-shot prompt
 
 Reads `LUMAAI_API_KEY` and `ANTHROPIC_API_KEY` from the OS env. The
-default winner is B; set `WINNER=A` to flip. Other knobs (prompt,
-model) are likewise OS env vars — see config block below.
+default winner is B; set `WINNER=A` to flip. The prompt can come from
+a CLI arg, `SPIKE_PROMPT` env var, or the default in the config block
+below.
 """
 
 from __future__ import annotations
@@ -47,7 +49,14 @@ if _missing:
 
 # --- config -------------------------------------------------------------
 
-PROMPT = os.environ.get("SPIKE_PROMPT", "a vintage typewriter on a wooden desk")
+# Prompt resolution order: CLI arg → SPIKE_PROMPT env var → default.
+# The CLI arg form is the convenient one for re-running the gate
+# against several prompts back-to-back.
+PROMPT = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else os.environ.get("SPIKE_PROMPT", "a vintage typewriter on a wooden desk")
+)
 LUMA_MODEL = os.environ.get("LUMA_MODEL", "uni-1")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
 
@@ -120,7 +129,7 @@ async def generate(prompt: str, image_ref: list[dict] | None = None) -> str:
     gen = await luma.generations.create(**kwargs)
     deadline = time.monotonic() + POLL_TIMEOUT
     while True:
-        gen = await luma.generations.get(id=gen.id)
+        gen = await luma.generations.get(gen.id)
         if gen.state == "completed":
             return gen.output[0].url
         if gen.state == "failed":
