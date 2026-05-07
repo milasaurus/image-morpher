@@ -480,7 +480,3 @@ quickstart works on a fresh clone.
   - Result URLs are presigned and expire ~1 hour after generation.
   - UNI-1 has no public seed parameter — round-0 variance comes from
     prompt jitter or model nondeterminism.
-- The older Dream Machine API (`api.lumalabs.ai/dream-machine/...`,
-  `photon-1` model, separate `style_ref` / `character_ref` /
-  `modify_image_ref` channels) is deprecated for new keys. Don't use
-  it.
