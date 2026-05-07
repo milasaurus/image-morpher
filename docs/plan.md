@@ -33,14 +33,11 @@ and write the prompt. The prototype is the apparatus to test that
 hypothesis; the artifact is the running code plus the findings logged
 in `NOTES.md`.
 
-Luma's current agents API exposes only one image-conditioning
-primitive (`image_ref`), so the routing decision happens entirely in
-language — UNI-1's autoregressive reasoning is what interprets a
+Luma's agents API exposes a single image-conditioning primitive
+(`image_ref`), so the routing decision happens entirely in language
+— UNI-1's autoregressive reasoning is what interprets a
 strategy-flavoured prompt and conditions on the anchor image
-appropriately. The original draft assumed the older Dream Machine API
-with three distinct channels (`style_ref` / `character_ref` /
-`modify_image_ref`); that API was deprecated for new keys before this
-build started. The spike (Unit 1) surfaced the migration on day 0.
+appropriately.
 
 ## Requirements trace
 

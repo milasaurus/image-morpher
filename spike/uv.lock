@@ -122,14 +122,14 @@ version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
-    { name = "lumaai" },
+    { name = "luma-agents" },
     { name = "python-dotenv" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
-    { name = "lumaai", specifier = ">=1.21,<2" },
+    { name = "luma-agents" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
 
@@ -224,8 +224,8 @@ wheels = [
 ]
 
 [[package]]
-name = "lumaai"
-version = "1.21.0"
+name = "luma-agents"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -235,9 +235,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b9/1d/b6e9f14739aa6b05f6f98869d98c84bc732182d31df285702997d4fff8f0/lumaai-1.21.0.tar.gz", hash = "sha256:b1c1da37fd0581b9684032e7b143dd2ea30f8e4a8e2498fef2fa2242a24d5702", size = 124414, upload-time = "2026-04-07T19:12:36.788Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/f3/ef37a9ef2d9fe47338c14550e4d65533b519003fc24a90a06e491fd95408/luma_agents-0.1.1.tar.gz", hash = "sha256:b0d2eee5f779dd64811fb38cd9be0d4236c35cdef45a711c2593079e0f336914", size = 108324, upload-time = "2026-05-05T00:33:19.421Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/08/b6fce7131ec0f546de783ad6ec54eb9e1051371a2587a91e543b11545793/lumaai-1.21.0-py3-none-any.whl", hash = "sha256:dd721ea6c5cbb994ffd475caf21c01897c086089eb60d2438b284cf9036160cf", size = 97335, upload-time = "2026-04-07T19:12:35.486Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/24/62735930914e0c4bee22f8d51470054e6a6f8267f87ba69b232257309702/luma_agents-0.1.1-py3-none-any.whl", hash = "sha256:f7194054a604929d9d50704dfdfc4f6cf9496ec5393bc935f4421db6f9d95ff0", size = 80965, upload-time = "2026-05-05T00:33:18.123Z" },
 ]
 
 [[package]]

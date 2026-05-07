@@ -230,9 +230,7 @@ new API has only one image-conditioning primitive.
 
 ## Reference: Luma API capabilities used
 
-From https://docs.agents.lumalabs.ai/guides/image-generation/ (current
-agents API; the older Dream Machine API at api.lumalabs.ai is
-deprecated for new keys):
+From https://docs.agents.lumalabs.ai/guides/image-generation/:
 
 - `POST agents.lumalabs.ai/v1/generations` — text-to-image
 - Model: `uni-1` (UNI-1)

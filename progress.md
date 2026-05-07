@@ -53,15 +53,12 @@ missing.
 These came up during the spike build. Plan + brief have been updated
 to match each.
 
-- **API migration discovered on day 0.** Luma's Dream Machine API is
-  deprecated for new keys; current API is at `agents.lumalabs.ai`.
-  Project pivoted from "LLM picks reference channel" to "LLM picks
-  prompt strategy" — same shape of routing decision, but expressed
-  in language since the new API has only one image-conditioning
-  primitive (`image_ref`). See `NOTES.md` for the full finding.
-- `Lever` → `RefChannel` → `Strategy` (rename history; the current
-  type is `Strategy = Literal["preserve_look", "preserve_subject",
-  "tweak"]`).
+- **Routing happens in language, not API fields.** The LLM picks a
+  prompt strategy (`preserve_look` / `preserve_subject` / `tweak`)
+  and writes a strategy-flavoured prompt; the backend always calls
+  UNI-1 with `image_ref` pinned to the winner.
+- Type is `Strategy = Literal["preserve_look", "preserve_subject",
+  "tweak"]`.
 - `loser` renamed to `runner_up`.
 - Claude default is `claude-haiku-4-5-20251001` (cheap, fast,
   vision-capable).
