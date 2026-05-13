@@ -248,6 +248,112 @@ firing the next-round request — the user picks one of three
 strategy buttons. There is no separate override dropdown; the
 picker is always shown.
 
+## Agent-native design
+
+The prototype is human-in-the-loop by default (user picks winners,
+user picks strategies), but the backend is deliberately shaped so that
+an agent can drive the same loop without any API changes. This section
+documents the principles that keep the design agent-extensible and what
+a future automated version would look like.
+
+### Why the current design is already agent-ready
+
+**The API is already the agent interface.** `POST /api/round` is
+stateless: it takes a prompt, optionally a winner URL, runner-up URL,
+and strategy, and returns image URLs. No session state, no cookies, no
+UI coupling. An agent script and the React frontend make identical
+requests — the endpoint cannot tell them apart.
+
+**Strategy is a request input, not an LLM output.** The backend accepts
+`strategy` as a client-supplied enum value. A human clicks a button; an
+agent supplies the string. Same wire format, no API change required.
+
+**The LLM's role is bounded to prompt-authoring.** `write_instruction()`
+takes (prompt, winner, runner_up, strategy) and returns
+`{rationale, instruction}`. It does not evaluate quality, pick winners,
+or decide when the loop should stop. Those decisions sit above the API
+layer — currently made by the human, in the future made by an agent.
+
+### Action parity
+
+| User action (UI) | How an agent achieves the same outcome |
+|------------------|---------------------------------------|
+| Type a prompt and submit | `POST /api/round { prompt }` |
+| Open A and B images, pick a winner | Fetch both URLs; call Claude with vision to evaluate against a stated goal; extract the winner URL |
+| Pick a strategy (Refine / New subject / New scene) | Supply `strategy` enum value in the next request, driven by the agent's own judgment or a goal-encoded heuristic |
+| Click "Done" and download | Record the winner URL; `complete_task` with summary; caller downloads the PNG |
+
+Full parity is achievable with no backend changes. The only missing
+piece for an autonomous agent is **winner evaluation** — the step that
+currently requires a human to open URLs and click. That belongs in agent
+code above the API, not inside the API.
+
+### What to protect during implementation
+
+These choices preserve agent-extensibility — don't erode them:
+
+- **Keep `POST /api/round` stateless.** No server-side session, no
+  implicit "current winner" stored server-side. State flows through
+  request parameters, which both the UI and an agent can supply.
+- **Don't bundle winner-selection into the backend.** If you add
+  automatic quality scoring or convergence detection inside the FastAPI
+  handler, you've made a decision that belongs to the caller (human or
+  agent). Keep the endpoint a dumb primitive.
+- **Keep `strategy` as a required input for round-N, not a derived
+  field.** If the backend ever auto-infers strategy when the client
+  omits it, you break the agent's ability to control the loop.
+- **Return raw URLs, not processed images.** The response carries Luma
+  CDN URLs. An agent can inspect them with Claude vision; the UI
+  displays them. If you proxy images through the backend you add
+  coupling that makes the agent path harder.
+
+### Future: agent-driven loop (v2)
+
+A fully automated loop would look like this — no UI, no human clicks:
+
+```
+goal = "a moody oil-painting portrait of a lighthouse at dusk"
+round 0: POST /api/round { prompt: goal }
+         → { images: [A, B] }
+evaluate: ask Claude (vision): "Given the goal, which image is closer?
+          Why? What strategy would move it further toward the goal?"
+         → winner=B, strategy="tweak"
+round 1: POST /api/round { prompt, winner=B, runner_up=A, strategy="tweak" }
+         → { images: [newB], rationale }
+evaluate: same — is newB closer to the goal than B was?
+          if yes → continue; if plateau → try "preserve_look"
+stop: after N rounds, or when the evaluator marks the goal achieved
+```
+
+Three things to add in v2 (none require changing the existing API):
+
+1. **`evaluate_round(goal, winner_url, new_url) -> {better, strategy, rationale}`**
+   — A Claude vision call that compares the new image to the prior
+   winner against the stated goal. This is the human click, automated.
+
+2. **`complete_task(summary, winner_url)`** — An explicit completion
+   signal (not heuristic detection). The agent calls this when the
+   evaluator marks the goal achieved or N rounds elapse.
+
+3. **A session log** — The agent accumulates `{round, winner_url,
+   strategy, rationale}` per round so it can explain what changed and
+   why. Written to a file or returned in the final summary.
+
+### Composability check
+
+New behaviors that can be added via prompt alone, no code changes:
+
+- *"Explore all three strategies in parallel on round 1, pick the
+  strongest result."* → Call the endpoint three times with different
+  `strategy` values; evaluate all three; keep the best.
+- *"Run until you have a result that passes a specific aesthetic
+  criterion."* → Replace the fixed-N stop condition with an evaluator
+  prompt.
+- *"Summarize what changed across the full session."* → Read the
+  session log and write a narrative.
+
+---
+
 ## Implementation units
 
 ### Unit 1: Spike (Day 0 precondition)
@@ -296,6 +402,54 @@ Verification:
   gate was retired — see Decision 7).
 - `NOTES.md` logs round-0 variance, per-strategy authoring quality,
   `image_ref` weight result, cold/p50 latency.
+
+### Spike findings (logged 2026-05-13)
+
+Empirical results from the spike runs. Architectural consequences are
+already reflected in the plan (see Decision 7 and Requirements R4/R5).
+
+**Latency — confirmed 30–60s per generation.** Round 0 (two parallel
+`generate()` calls): ~46–48s. Round 1 (one serial `generate_with_anchor()`
+call): ~62–63s. Original plan assumed 10–20s. An 8–15 round session is
+4–15 minutes of waiting. `POLL_TIMEOUT = 180s` is sufficient (each
+generation completes well within it), but latency-feel at R10 is a real
+risk. Speculative pre-generation of round N+1 (v2 parking lot) becomes
+more attractive as a latency mask.
+
+**Round-0 variance — open.** A and B are generated from the same bare
+prompt with no jitter. Whether they differ visibly enough to give the user
+a meaningful A/B choice hasn't been confirmed by eye — URLs need to be
+opened. If they come back near-identical, add distinct semantic modifiers
+per the spike's comment block.
+
+**LLM strategy routing — empirically dead-ended.** Across the two gate
+cases run before this session (typewriter, wolf-howling-at-moon), Claude
+misrouted both: case 1 picked `preserve_subject` when look attributes
+differed; case 2 picked `preserve_look` when `tweak` was the natural call.
+Re-running the case-1 prompt today returned `preserve_look` (correct) —
+confirming the mislabeling is variable, not systematic. The root problem
+is that the LLM can correctly identify *why* B beat A but cannot tell
+*what the user wants next* from pixels alone. Strategy routing moved to
+explicit user input; LLM keeps the prompt-authoring role (Decision 7).
+
+**Instruction quality — preliminary pass.** Even when strategy labels
+were wrong, Claude's written `instruction` was reasonable (case 1: rationale
+described look attributes; instruction preserved look-style adjectives in
+a new scene; prompt was usable). The prompt-authoring role appears
+mechanically solid; the mislabeling was the only failure mode observed.
+
+**`image_ref` weight — not yet probed.** `IMAGE_REF_WEIGHT = None` in
+all runs so far. Open question #2 remains open; probe during or after Unit 2
+by setting `IMAGE_REF_WEIGHT = 0.6` in `spike.py`.
+
+**URL TTL — at least 1 hour.** Presigned S3 URLs carry `X-Amz-Expires=3600`.
+Backend proxy is not needed for any session within that window.
+
+**`luma-agents` SDK surface confirmed.** `AsyncLuma(auth_token=...)`,
+`luma.generations.create(**kwargs)` → `{id, state}`, poll
+`luma.generations.get(id)` until `state == "completed"`, result at
+`output[0].url`. No undocumented errors. `type="image"`,
+`output_format="png"`, `model="uni-1"` all accepted.
 
 ---
 
