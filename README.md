@@ -49,7 +49,7 @@ Open **http://localhost:8080**. Press Ctrl+C to stop both servers.
 
 ## Notes
 
-- Do not refresh the page mid-session — all progress is lost on reload.
+- Do not refresh the page mid-session — state is held in memory and all progress is lost on reload.
 - Each generation takes 30–60 seconds — this is Luma UNI-1's latency.
 - Image URLs expire after ~1 hour. Save your result before closing the session.
 - Findings from building this are in [`NOTES.md`](NOTES.md).
