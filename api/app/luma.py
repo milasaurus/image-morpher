@@ -4,6 +4,7 @@ import time
 from luma_agents import AsyncLuma
 
 from app.config import settings
+from app.constants import POLL_INTERVAL_S, POLL_TIMEOUT_S
 
 
 class GenerationFailed(Exception):
@@ -12,10 +13,6 @@ class GenerationFailed(Exception):
 
 class GenerationTimeout(Exception):
     """Polled past the overall deadline."""
-
-
-_POLL_INTERVAL = 2.0
-_POLL_TIMEOUT = 180.0
 
 _client = AsyncLuma(auth_token=settings.LUMAAI_API_KEY)
 
@@ -39,7 +36,7 @@ async def generate(prompt: str, image_ref: list[dict] | None = None) -> str:
         kwargs["image_ref"] = image_ref
 
     gen = await _client.generations.create(**kwargs)
-    deadline = time.monotonic() + _POLL_TIMEOUT
+    deadline = time.monotonic() + POLL_TIMEOUT_S
 
     while True:
         gen = await _client.generations.get(gen.id)
@@ -48,8 +45,8 @@ async def generate(prompt: str, image_ref: list[dict] | None = None) -> str:
         if gen.state == "failed":
             raise GenerationFailed(gen.failure_reason or "unknown")
         if time.monotonic() > deadline:
-            raise GenerationTimeout(f"generation {gen.id} did not complete in {_POLL_TIMEOUT}s")
-        await asyncio.sleep(_POLL_INTERVAL)
+            raise GenerationTimeout(f"generation {gen.id} did not complete in {POLL_TIMEOUT_S}s")
+        await asyncio.sleep(POLL_INTERVAL_S)
 
 
 async def generate_with_anchor(instruction: str, anchor_url: str) -> str:
