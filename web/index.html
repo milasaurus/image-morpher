@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>image morpher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <p class="wordmark">image morpher</p>
+
+  <div id="error-msg"></div>
+
+  <!-- idle -->
+  <section id="prompt-section" class="active">
+    <p class="prompt-label">Prompt</p>
+    <textarea id="prompt-input"
+      placeholder="a vintage typewriter on a wooden desk"
+      onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))submitPrompt()"></textarea>
+    <div class="prompt-footer">
+      <button class="btn-primary" onclick="submitPrompt()">Generate →</button>
+      <span class="prompt-note">Two images · ~50 s each</span>
+    </div>
+  </section>
+
+  <!-- generating -->
+  <section id="loading-section">
+    <div class="loading-inner">
+      <span class="loading-msg" id="loading-msg">Generating</span>
+      <span class="dots"><span>.</span><span>.</span><span>.</span></span>
+      <span class="loading-timer" id="loading-timer"></span>
+    </div>
+    <div class="skeleton-pair">
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+    </div>
+  </section>
+
+  <!-- picking -->
+  <section id="picking-section">
+    <div class="picking-header">
+      <span class="round-label" id="round-label"></span>
+      <button id="done-btn" class="btn-primary" onclick="finishSession()" style="display:none">
+        Done — save image
+      </button>
+    </div>
+
+    <div class="image-pair">
+      <!-- slot A -->
+      <div class="image-slot" onclick="pickWinner('a')"
+           role="button" tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ')pickWinner('a')">
+        <div class="img-wrap">
+          <img id="img-a" class="slot-img" alt="Option A">
+          <div class="img-overlay"><span class="overlay-label">Pick A →</span></div>
+        </div>
+        <div class="slot-meta">
+          <span class="slot-letter">A</span>
+        </div>
+      </div>
+
+      <!-- slot B -->
+      <div class="image-slot" onclick="pickWinner('b')"
+           role="button" tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ')pickWinner('b')">
+        <div class="img-wrap">
+          <img id="img-b" class="slot-img" alt="Option B">
+          <div class="img-overlay"><span class="overlay-label">Pick B →</span></div>
+        </div>
+        <div class="slot-meta">
+          <span class="slot-letter">B</span>
+          <p id="rationale" class="rationale" style="display:none"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- choosing intent -->
+  <section id="strategy-section">
+    <p class="strategy-label">What do you want next?</p>
+
+    <button class="btn-strategy" onclick="pickStrategy('tweak')">
+      <span class="strategy-name">🎯  Refine this</span>
+      <span class="strategy-desc">Stay close — one focused change</span>
+    </button>
+    <button class="btn-strategy" onclick="pickStrategy('preserve_look')">
+      <span class="strategy-name">🎨  New subject, same look</span>
+      <span class="strategy-desc">Keep B's mood and style, swap the subject</span>
+    </button>
+    <button class="btn-strategy" onclick="pickStrategy('preserve_subject')">
+      <span class="strategy-name">🌐  New scene, same subject</span>
+      <span class="strategy-desc">Keep B's subject, put it somewhere new</span>
+    </button>
+  </section>
+
+  <!-- done -->
+  <section id="done-section">
+    <p class="done-header">Your image</p>
+    <img id="done-img" alt="Final image">
+    <div class="done-actions">
+      <a id="open-link" class="btn-primary" target="_blank" rel="noopener">Open full image →</a>
+      <button class="btn-ghost" onclick="startOver()">Start over</button>
+    </div>
+    <p class="done-note">
+      If the image opens in a new tab instead of downloading, press Cmd/Ctrl+S to save.
+    </p>
+  </section>
+
+  <script>
+    const API_BASE = 'http://localhost:8001';
+    const NUM_ROUNDS = 10;
+
+    const STRATEGY_LABELS = {
+      tweak: 'Refining this',
+      preserve_look: 'New subject, same look',
+      preserve_subject: 'New scene, same subject',
+    };
+
+    let prompt = '';
+    let urlA = null;
+    let urlB = null;
+    let pendingWinner = null;
+    let pendingRunnerUp = null;
+    let roundNumber = 0;
+    let timerInterval = null;
+
+    function show(id) {
+      document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function startTimer() {
+      const el = document.getElementById('loading-timer');
+      let seconds = 0;
+      el.textContent = '0s';
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => { el.textContent = `${++seconds}s`; }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      document.getElementById('loading-timer').textContent = '';
+    }
+
+    function setError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.style.display = msg ? 'block' : 'none';
+    }
+
+    async function postRound(body) {
+      const res = await fetch(`${API_BASE}/api/round`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function submitPrompt() {
+      const val = document.getElementById('prompt-input').value.trim();
+      if (!val) return;
+      prompt = val;
+      roundNumber = 0;
+      setError('');
+
+      document.getElementById('loading-msg').textContent = 'Generating two images in parallel';
+      show('loading-section');
+      startTimer();
+
+      try {
+        const data = await postRound({ prompt });
+        urlA = data.images[0];
+        urlB = data.images[1];
+        stopTimer();
+        renderPicking(null, null);
+      } catch (e) {
+        stopTimer();
+        setError(`Generation failed: ${e.message}`);
+        show('prompt-section');
+      }
+    }
+
+    function renderPicking(rationale, strategy) {
+      document.getElementById('img-a').src = urlA;
+      document.getElementById('img-b').src = urlB;
+
+      const rationaleEl = document.getElementById('rationale');
+      if (rationale) {
+        const label = STRATEGY_LABELS[strategy] || '';
+        rationaleEl.textContent = label ? `${label} — ${rationale}` : rationale;
+        rationaleEl.style.display = 'block';
+      } else {
+        rationaleEl.style.display = 'none';
+      }
+
+      document.getElementById('round-label').textContent =
+        roundNumber === 0
+          ? `Pick your favourite  ·  ${NUM_ROUNDS} rounds total`
+          : `Round ${roundNumber} of ${NUM_ROUNDS} — pick your favourite`;
+
+      document.getElementById('done-btn').style.display = roundNumber >= 1 ? 'inline-flex' : 'none';
+
+      show('picking-section');
+    }
+
+    function pickWinner(choice) {
+      pendingWinner   = choice === 'a' ? urlA : urlB;
+      pendingRunnerUp = choice === 'a' ? urlB : urlA;
+      show('strategy-section');
+    }
+
+    async function pickStrategy(strategy) {
+      setError('');
+      document.getElementById('loading-msg').textContent = 'Writing the next prompt and generating';
+      show('loading-section');
+      startTimer();
+
+      try {
+        const data = await postRound({
+          prompt,
+          winner_url: pendingWinner,
+          runner_up_url: pendingRunnerUp,
+          strategy,
+        });
+        urlA = pendingWinner;
+        urlB = data.images[0];
+        roundNumber++;
+        stopTimer();
+
+        if (roundNumber >= NUM_ROUNDS) {
+          renderDone(urlA);
+        } else {
+          renderPicking(data.rationale, data.strategy);
+        }
+      } catch (e) {
+        stopTimer();
+        setError(`Generation failed: ${e.message}`);
+        show('strategy-section');
+      }
+    }
+
+    function finishSession() {
+      renderDone(urlA);
+    }
+
+    function renderDone(winnerUrl) {
+      document.getElementById('done-img').src = winnerUrl;
+      const link = document.getElementById('open-link');
+      link.href = winnerUrl;
+      link.download = `image-morpher-${Date.now()}.png`;
+      show('done-section');
+    }
+
+    function startOver() {
+      urlA = urlB = pendingWinner = pendingRunnerUp = null;
+      roundNumber = 0;
+      prompt = '';
+      document.getElementById('prompt-input').value = '';
+      setError('');
+      show('prompt-section');
+    }
+  </script>
+</body>
+</html>

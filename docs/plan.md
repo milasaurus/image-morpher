@@ -16,8 +16,8 @@ a prompt that embodies that intent → repeat → "Done" → PNG download.
 Audience: designers / mood-board creators iterating 8–15 rounds on a
 single image. See `docs/project-brief.md` for product context.
 
-Stack: React + Vite + TypeScript (frontend), Python + FastAPI +
-`luma-agents` SDK + `anthropic` SDK (backend). Localhost only.
+Stack: Single `web/index.html` (vanilla JS, no build step), Python +
+FastAPI + `luma-agents` SDK + `anthropic` SDK (backend). Localhost only.
 
 ## Problem frame
 
@@ -459,7 +459,7 @@ Stand up FastAPI + a single async helper that wraps UNI-1 generation
 and polling.
 
 Files: `api/pyproject.toml`, `api/.env.example`,
-`api/app/{__init__,config,luma}.py`, `api/tests/test_luma.py`.
+`api/app/{__init__,config,luma,constants}.py`, `api/tests/test_luma.py`.
 
 Approach:
 
@@ -470,8 +470,9 @@ Approach:
   `ANTHROPIC_API_KEY` (both required),
   `LUMA_MODEL` (`uni-1`), `ANTHROPIC_MODEL`
   (`claude-haiku-4-5-20251001`),
-  `CORS_ORIGINS` (`["http://localhost:5173"]`).
-  Plus `IMAGE_REF_WEIGHT` (optional float, only sent if Unit 1's
+  `CORS_ORIGINS` (`["http://localhost:5173"]`),
+  `NUM_OF_ROUNDS` (int, default `10`),
+  `IMAGE_REF_WEIGHT` (optional float, only sent if Unit 1's
   empirical probe confirmed the field is accepted).
 - `luma.py`:
   - Module-level `AsyncLuma` client (`luma-agents` SDK).
@@ -496,7 +497,7 @@ Verification: `uv run pytest` passes; module imports cleanly.
 
 Wire the FastAPI route. Single endpoint dispatches on request shape.
 
-Files: `api/app/{models,strategy,main}.py`,
+Files: `api/app/{models,strategy,system_prompt,main}.py`,
 `api/tests/{test_strategy,test_main}.py`.
 
 Approach:
@@ -512,12 +513,18 @@ Approach:
     strategy: Strategy | None`. The strategy echoed back is the one
     the user picked, useful for the frontend's subtitle.
   - `ErrorResponse`: `error: Literal[...], detail`.
+- `system_prompt.py`: Claude system prompt as a module-level Python
+  constant `SYSTEM_PROMPT`. Not loaded from a file — imported directly.
+- `constants.py`: module-level constants shared across the app (e.g.
+  `POLL_INTERVAL_S = 2`, `POLL_TIMEOUT_S = 180`). Keep numeric literals
+  out of business logic.
 - `strategy.py`: `async def write_instruction(prompt, winner,
   runner_up, strategy) -> WrittenInstruction`. Anthropic SDK; model
-  from `settings.ANTHROPIC_MODEL`. System prompt teaches what each
-  strategy means and how its `instruction` should be shaped — but
-  the strategy is a request *input*, not something Claude picks.
-  Robust JSON extraction (regex first `{...}` block).
+  from `settings.ANTHROPIC_MODEL`. Imports `SYSTEM_PROMPT` from
+  `system_prompt.py`. Robust JSON extraction (regex first `{...}` block).
+- `main.py` also exposes `GET /api/config` → `{"num_of_rounds":
+  settings.NUM_OF_ROUNDS}`. No auth, localhost only. Frontend fetches
+  this on mount so the round limit is set in one place.
 - `main.py` `POST /api/round` handles two cases:
   - `winner_url is None` → round 0 (`asyncio.gather` two `generate`
     calls). Strategy is ignored.
@@ -534,135 +541,53 @@ Verification: `uv run pytest` passes; `curl` round-0 returns two URLs.
 
 ---
 
-### Unit 4: Web scaffold + round-0 flow
+### Units 4–6: Single-file web UI
 
-React + Vite app with state machine, prompt input, image-pair
-display, click-to-pick. Round 0 only — no LLM rationale yet.
-
-Files: `web/{package.json, tsconfig.json, vite.config.ts, index.html,
-.env.example}`, `web/src/{main,App,types,api}.{ts,tsx}`,
-`web/src/components/{PromptInput,ImagePair}.tsx`, `web/src/styles.css`,
-`web/src/{api.test.ts, App.test.tsx}`.
+File: `web/index.html`.
 
 Approach:
 
-- `npm create vite@latest -- --template react-ts`. Strip boilerplate.
-- `types.ts` mirrors `api/app/models.py` by hand. `Strategy` is a
-  `Literal` of three string values; `WrittenInstruction` carries
-  `rationale` and `instruction`. Strategy is a request input, not
-  a response field on the LLM output.
-- `api.ts` exposes `postRound(req): Promise<RoundResponse>`. On
-  non-2xx, parse `ErrorResponse`, throw `Error` carrying the
-  `error` discriminator.
-- `App.tsx` holds the state machine via `useState`.
-- `PromptInput`: controlled textarea + submit, visible only in
-  `idle`. One example prompt, one line of orientation copy.
-- `ImagePair`: A and B side-by-side. Aspect-ratio placeholders so
-  layout doesn't shift on load. Stacked vertically below ~640px.
-- `styles.css`: flat CSS, dark background, generous spacing.
+- State machine: `idle → generating → picking → choosing_intent →
+  generating → … → done`. Managed as a plain JS variable; a single
+  `show(sectionId)` function swaps visible `<section>` elements.
+- `fetch('http://localhost:8000/api/round', { method: 'POST', … })`
+  for all API calls. Errors surface as a red message above the active
+  section. No retry button — user stays on the current section and
+  can try again.
+- `NUM_ROUNDS = 10` hardcoded in JS.
+- Round 0: submit prompt → `generating` → show two images side-by-side
+  → `picking`. No rationale shown.
+- Click A or B: stash `pendingWinner` / `pendingRunnerUp` → `choosing_intent`.
+  Three strategy buttons: 🎯 Refine this (`tweak`) · 🎨 New subject,
+  same look (`preserve_look`) · 🌐 New scene, same subject
+  (`preserve_subject`).
+- Strategy click: → `generating` → POST round-N → `urlA = pendingWinner`,
+  `urlB = response.images[0]`, `roundNumber++` → `picking`. Rationale
+  shown below B.
+- Done button: visible from round 1+; primary CTA when
+  `roundNumber >= NUM_ROUNDS`. Opens winner URL in new tab
+  (`target="_blank"`). Cross-origin `download` attribute works in
+  some browsers; others require Cmd/Ctrl+S. No proxy.
+- Done state: winner image + open-link + "Start over".
+- Loading: plain "Generating…" text. No skeleton shimmer.
+- Dark background, flat CSS, no external dependencies.
+- Served with `python -m http.server 5173` from `web/` — matches
+  the backend's `CORS_ORIGINS` default, no backend changes needed.
 
-Tests: api-client happy path + error envelope; round-0 flow
-(submit → both images render → state advances to `picking`);
-click-to-pick records the choice.
-
-Verification: `npm run dev` shows working round-0 against a running
-backend; `npm run test` passes.
-
----
-
-### Unit 5: Round-N flow, intent picker, strategy subtitle
-
-Full anchored loop with explicit intent picking and rationale
-surfacing.
-
-Files: modify `App.tsx`, `ImagePair.tsx`, `styles.css`,
-`App.test.tsx`. Create `StrategyPicker.tsx`,
-`StrategySubtitle.tsx`, and their tests.
-
-Approach:
-
-- Click winner: set `currentPair.a = winner`, clear `currentPair.b`,
-  show `StrategyPicker` (three buttons), transition state to
-  `choosing_intent`. Do *not* fire the request yet.
-- User clicks one of the three buttons → fire `postRound({prompt,
-  winner, runner_up, strategy: <picked>})`, transition to
-  `generating`.
-- Round-N response: set `currentPair.b = response.images[0]`,
-  `currentRationale = response.rationale`,
-  `currentStrategy = response.strategy`. Transition back to
-  `picking`.
-- `StrategyPicker`: three buttons in a row — 🎯 Refine this · 🎨 New
-  subject, same look · 🌐 New scene, same subject. Visible only in
-  `choosing_intent`. Buttons map to `tweak` / `preserve_look` /
-  `preserve_subject` per Decision 6. Single-click commits.
-- `StrategySubtitle`: hidden on round 0 via `visibility: hidden`
-  with `min-height` (do *not* `display: none` — collapses layout).
-  Round N+: plain-language label of the strategy that produced this
-  B (e.g. "Refining this") + rationale truncated to ~140 chars,
-  expandable. No override dropdown — the picker on the next round
-  IS the override.
-
-Tests: round-N flow with each strategy renders new B + correct
-subtitle label; picker buttons each fire a request with the right
-`strategy` value; user can't fire round-N without picking; picker
-hidden on round 0; strategy-name translation never exposes the enum
-value.
-
-Verification: manual loop — pick 10 in a row; loop stays coherent;
-strategy subtitle updates each round.
-
----
-
-### Unit 6: Done flow, error states, README, ship
-
-PNG export, error states with retry, README, NOTES.md final pass.
-
-Files: create `DoneButton.tsx`, `ErrorBanner.tsx`. Modify `App.tsx`,
-`styles.css`. Create `README.md`. Modify `NOTES.md`.
-
-Approach:
-
-- `DoneButton`: visible from round 1+. Anchor with
-  `href={winner_url}`, `target="_blank"`, `rel="noopener"`,
-  `download="image-morpher-{timestamp}.png"`. Cross-origin download
-  works in some browsers; others open in a new tab where the user
-  Cmd/Ctrl+S's. README documents both. No `fetch+blob`, no proxy.
-  On `done`: shows "Start over". No social share.
-- `ErrorBanner`: renders when `state.error` is set. Raw
-  `error.message` + Retry button that re-fires the last request from
-  cached args. No per-error-type copy.
-- Loading polish: skeleton shimmer on placeholder; "UNI-1's still
-  thinking…" tick after 5s.
-- `README.md` (blog-post tone): what this is, who it's for,
-  quickstart, how it works (gradient-descent + prompt-strategy
-  routing on a single `image_ref`), saving your output, what I
-  learned (link to `NOTES.md` with the headline finding teased),
-  v2 / out of scope.
-- `NOTES.md` final pass: ≥5 substantive findings. Edit so the
-  strongest leads. Must include: a one-line read on whether the loop
-  converged or drifted across the smoke session, the `image_ref`
-  weight finding from Unit 1, and the API-migration finding.
-
-Tests: Save-image anchor renders correctly; `ErrorBanner` renders +
-retry recovers; Done state shows Start over.
-
-Verification: manual smoke — prompt → 10 picks → done. PNG
-downloads. Loop stays coherent. Different strategies used across
-the 10 picks. Force
-network error in devtools — banner appears, retry recovers. README's
-quickstart works on a fresh clone.
+Verification: manual smoke — prompt → 10 picks → done → image opens
+in new tab. Different strategies used. Loop stays coherent.
 
 ## Risks
 
-| Risk | Mitigation |
-|------|------------|
-| UNI-1 returns near-identical images on identical prompts. | Unit 1 validates. Distinct semantic seeds on round 0 if needed. |
-| LLM strategy selection is shaky. | Unit 1 gate: ≥3/5 agreement on obvious cases. If <3/5, sharpen prompt / pivot README narrative / demote LLM step. |
-| UNI-1 latency feels slow at round 12. | Skeleton shimmer + elapsed-seconds tick. Speculative pre-gen is v2. |
-| Loop oscillates instead of converging. | Note in `NOTES.md` during the Unit 6 smoke. If endemic, document the failure as the headline finding. |
-| Luma URLs expire mid-session. | Unit 1 confirms TTL ≥ ~30 min. README documents it; no proxy. |
-| Pydantic ↔ TypeScript drift. | Keep both files in PR scope when either changes. |
-| Anthropic model deprecated by run-time. | `ANTHROPIC_MODEL` is configurable via `.env`. |
+| Risk | Mitigation | Spike result |
+|------|------------|--------------|
+| UNI-1 returns near-identical images on identical prompts. | Unit 1 validates. Distinct semantic seeds on round 0 if needed. | **Open.** URLs generated but not yet eyeballed. Check before closing Unit 1. |
+| LLM strategy selection is shaky. | ~~Unit 1 gate: ≥3/5 agreement on obvious cases. If <3/5, sharpen prompt / pivot README narrative / demote LLM step.~~ Strategy is now a user input (Decision 7). | **Closed — root cause eliminated.** Cases 1–2 confirmed LLM can't infer user intent from pixels. Routing moved to explicit user picker; LLM is prompt-author only. |
+| UNI-1 latency feels slow at round 12. | Skeleton shimmer + elapsed-seconds tick. Speculative pre-gen is v2. | **Confirmed and worse than assumed.** Round 0 ~48s, round N ~63s (vs 10–20s planned). An 8–15 round session is 4–15 min of waiting. Shimmer + tick still the mitigation; pre-gen is more attractive now. |
+| Loop oscillates instead of converging. | Note in `NOTES.md` during the Unit 6 smoke. If endemic, document the failure as the headline finding. | **Open.** Judged during Unit 6 smoke. |
+| Luma URLs expire mid-session. | Unit 1 confirms TTL ≥ 1 hour. README documents it; no proxy. | **Mitigated.** Presigned S3 URLs carry `X-Amz-Expires=3600`. Proxy not needed for any session in that window. |
+| Pydantic ↔ TypeScript drift. | Keep both files in PR scope when either changes. | Not yet applicable (Units 2–4 not started). |
+| Anthropic model deprecated by run-time. | `ANTHROPIC_MODEL` is configurable via `.env`. | Not yet applicable. |
 
 ## References
 
