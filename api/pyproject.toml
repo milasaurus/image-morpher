@@ -9,6 +9,7 @@ dependencies = [
     "anthropic>=0.40",
     "pydantic>=2",
     "pydantic-settings>=2",
+    "pillow>=10",
 ]
 
 [project.optional-dependencies]

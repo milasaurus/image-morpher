@@ -1,8 +1,11 @@
 import asyncio
 import base64
+import io
 import json
 import re
 import urllib.request
+
+from PIL import Image
 
 from anthropic import AsyncAnthropic
 
@@ -15,13 +18,22 @@ _client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
+_MAX_SIDE = 1024
+_JPEG_QUALITY = 85
+_MAX_B64_BYTES = 4_800_000  # stay well under Anthropic's 5 MB limit
+
+
 async def _fetch_b64(url: str) -> tuple[str, str]:
-    """Download an image URL and return (base64_data, media_type)."""
+    """Download, resize if needed, and return (base64_jpeg, 'image/jpeg')."""
     def _fetch():
         with urllib.request.urlopen(url, timeout=30) as r:
-            data = r.read()
-            media_type = r.headers.get("Content-Type", "image/png").split(";")[0]
-            return base64.standard_b64encode(data).decode(), media_type
+            raw = r.read()
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        if max(img.size) > _MAX_SIDE:
+            img.thumbnail((_MAX_SIDE, _MAX_SIDE), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
+        return base64.standard_b64encode(buf.getvalue()).decode(), "image/jpeg"
     return await asyncio.get_event_loop().run_in_executor(None, _fetch)
 
 _SYSTEM_PROMPT = """\
