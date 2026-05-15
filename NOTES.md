@@ -1,147 +1,41 @@
-# image-morpher — Build Notes
+# Notes
 
-Findings worth remembering. Anything that surprised me, broke an
-assumption, or would be useful to future-me.
+Findings from building image-morpher. Strongest first.
 
-## Open questions for the spike (Unit 1)
+---
 
-- [ ] **Round-0 variance / jitter need.** Run with the bare prompt.
-      Do A and B differ visibly on their own? If yes, no jitter
-      needed. If not, edit `spike.py` to append distinct semantic
-      modifiers (e.g. `, warm lighting` / `, cool lighting`) — note
-      that the jitter axis frames what dimension A vs B is asking.
-- [ ] **Strategy agreement.** On 5 hand-picked obvious A/B pairs,
-      does Claude pick the strategy you'd have picked ≥3 times?
-      <3/5 trips the go/no-go gate.
-- [ ] **`image_ref` weight support.** Does the new agents API accept
-      a `weight` field on `image_ref` entries? If yes, what value
-      feels like "carry the vibe" without near-duplication? If no,
-      conditioning is prompt-only.
-- [ ] **Cold / p50 latency.** What's a typical round take?
+## LLM cannot reliably infer user intent from an image pick alone
 
-## Strategy gate progress (≥3/5 = go)
+Even a vision-capable model (Claude Haiku 4.5) can correctly identify *why* B beat A — better mood, tighter composition, more dramatic lighting — but cannot determine *what the user wants next* from that signal alone. Picking B over A could mean "I want this exact feeling extended" or "I want this subject in a different scene" or "tweak this one thing." The LLM has no way to disambiguate.
 
-| # | Prompt | Claude's pick | What I'd have picked | Match? |
-|---|--------|---------------|----------------------|--------|
-| 1 | "a vintage typewriter on a wooden desk" | `preserve_subject` | `preserve_look` (A vs B differ in composition / DOF / lighting, not subject) | **miss** |
-| 2 | "a wolf howling at the moon" | `preserve_look` (eagle replaces wolf) | `tweak` (refine the wolf-on-moon image, don't change subjects) | **miss** |
-| 3 | TBD | | | |
-| 4 | TBD | | | |
-| 5 | TBD | | | |
+This killed the original design (LLM picks the strategy). Two gate cases confirmed it: the typewriter prompt returned the wrong strategy label despite writing a correct instruction; the wolf-howling-at-moon case replaced the wolf with an eagle when `tweak` was the natural call.
 
-## Findings
+**Fix:** strategy moved to explicit user input. The three-button picker ("Refine this / New subject, same look / New scene, same subject") replaced the routing decision entirely. LLM kept the prompt-authoring role — that part worked well throughout.
 
-### Latency: UNI-1 generations take 30–60s, not 10–20s (logged 2026-05-07)
+---
 
-First spike run timings:
+## UNI-1 latency is 30–60 s per generation, not 10–20 s
 
-- Round 0 (two parallel `generate(prompt)` calls): **47.8s**
-- Round 1 (one serial `generate_with_anchor` call): **62.5s**
+Round 0 (two parallel calls): ~47 s. Round N (one serial call with `image_ref`): ~62 s. An 8–10 round session is 10–15 minutes of waiting. The design goal of "latency feels like part of the craft" is at risk on longer sessions.
+---
 
-Each generation is roughly 30–60s on this account, well above the
-10–20s the plan assumed. Implications:
+## Each generation costs ~60 s — wrong guesses are expensive
 
-- An 8–15 round session is **4–15 minutes of waiting** at this rate.
-- The plan's `POLL_TIMEOUT = 180s` is sufficient (each gen finishes
-  inside it), but we're closer to the edge than expected.
-- The design's "per-round latency feels like part of the craft, not
-  a wait" target (R10) is at risk. A single late round in a 12-pick
-  session could push the user past their attention budget.
-- Speculative pre-generation of round N+1 (currently parked as v2)
-  becomes more attractive: a quietly-running pre-fetch could mask a
-  large fraction of perceived latency.
+At 30–60 s per generation, a misfire isn't just annoying — it's the dominant cost of using the tool. The current flow commits to a Luma generation the moment a strategy is clicked, with no checkpoint in between. If Claude writes an instruction the user wouldn't have chosen, they only find out a minute later.
 
-Need more data points before treating this as the headline. Re-run
-the spike a few times to get a real cold/p50 distribution.
+The fix is a prompt-review step: after the user picks a strategy, call Claude to get the instruction, then surface it in an editable field *before* triggering Luma. The user can read, adjust, and confirm — one lightweight step that can eliminate the most expensive mistakes. This also returns control to the user for cases where the LLM writes a reasonable but subtly wrong prompt (e.g. changes the subject when the user wanted to preserve it).
 
-### Strategies are exploration-shaped, not convergence-shaped (logged 2026-05-07)
+This is the clearest v2 improvement: split `/api/round` into two steps — `write_instruction` (fast, cheap) and `generate` (slow, expensive) — with a human checkpoint in the middle.
 
-The brief framed image-morpher as refinement *to convergence* — a
-designer iterating on a single image they're trying to perfect. But
-two of the three strategies as defined encourage divergence:
+---
 
-| Strategy | What it does | Convergence-friendly? |
-|---|---|---|
-| `preserve_look` | "same look, different subject" | ❌ swaps the user's chosen subject |
-| `preserve_subject` | "same subject, different scene" | ❌ swaps the user's chosen scene |
-| `tweak` | "near-copy with one focused change" | ✅ only convergent option |
+## UNI-1 produces near-identical images from the same prompt
 
-Case 2 surfaced this empirically: user prompts "a wolf howling at
-the moon" → picks B → Claude correctly identifies B's strengths as
-*look* attributes → applies `preserve_look` per the system prompt
-("allow the subject to vary") → returns an instruction that swaps
-the wolf for an eagle. Mechanically correct per the system prompt,
-but almost certainly not what a designer iterating on the wolf-image
-wants.
+Round 0 generates A and B from the identical prompt with no jitter. In practice, the two images come back looking nearly the same — UNI-1 has little visible non-determinism on repeated calls. This undermines the A/B premise: if A and B look identical, the user has nothing meaningful to pick between.
+---
 
-Likely root cause: the strategy taxonomy is vestigial from the
-three-channel Dream Machine API design (`style_ref` /
-`character_ref` / `modify_image_ref`). On that API the channels
-defined three different *kinds of generation*; "preserve_look,
-allow subject variation" mapped to `style_ref` and made API-level
-sense. On the new agents API where routing is language-only, the
-strategies should probably be reframed around what the *designer
-wants next* (refine this / explore alternatives) rather than which
-old API channel the routing maps to.
+## `image_ref` weight field — not yet probed
 
-### LLM cannot reliably infer user intent from pixels alone (logged 2026-05-07)
+The agents API docs only list `url` / `data` / `media_type` on `image_ref` entries. The old Dream Machine API had a `weight` field. We never confirmed whether the new API accepts it. `IMAGE_REF_WEIGHT` is left `None` in config; conditioning strength is prompt-only for now.
 
-Across cases 1 and 2 the spike has shown that even a vision-capable
-Claude (Haiku 4.5) struggles to infer *what the user wants next*
-from "they picked B over A." Reasons:
 
-1. Multiple legitimate inferences from any pick. Picking B over A
-   could mean "I like B's mood" or "I like B's composition" or "I
-   like B's whole vibe and want this exactly." The LLM has no signal
-   to disambiguate.
-2. Even when the LLM correctly identifies *why* B won (case 2's
-   rationale is correct: B has more luminous moon and dramatic
-   lighting), it can't read whether the designer wants to keep that
-   *with* the original subject or *without* it.
-
-This is the original "chip" insurance from the brief's earlier
-draft, surfacing under a different name. We descoped chips on the
-bet that LLM-alone would work; the spike says it doesn't.
-
-The mechanism the user actually needs is explicit intent input
-after the pick: a multiple-choice "what do you want next?" that
-maps directly to a strategy, removing the LLM's routing decision.
-LLM keeps the prompt-authoring role; user keeps the strategy role.
-See follow-up below.
-
-### Strategy mislabel — instruction is right, label is wrong (case 1, logged 2026-05-07)
-
-Case 1 of the gate (vintage typewriter prompt). Claude chose
-`preserve_subject`, but its own rationale described *look*
-attributes:
-
-> "tighter, more intimate close-up perspective… angled viewpoint and
-> shallow depth of field create better visual drama"
-
-The subject was identical in A and B (typewriter on desk); what
-differed was lighting, depth of field, perspective — i.e. *look*.
-A `preserve_look` strategy was the honest call.
-
-Notably, the *instruction* Claude wrote was a perfectly reasonable
-preserve-look prompt:
-
-> "a vintage typewriter on a wooden desk, captured with a close-up
-> angled perspective emphasizing mechanical details and texture,
-> golden hour warm lighting, shallow depth of field with blurred
-> background"
-
-Decision 4 held — instruction is self-contained, no constraint
-phrasing. The strategy field is the unreliable part, not the prompt
-authoring.
-
-**Emerging pattern (only 1/5 so far, but worth watching):** Claude
-may be writing the right prompt but tagging it with whichever
-strategy label sounds adjacent. If this repeats across cases 2–5,
-the strategy field is mostly noise — the LLM's actual job is prompt
-authoring, and the routing-by-label premise weakens. Could pivot to
-just `{rationale, instruction}` and use the strategy concept only
-for the override dropdown.
-
-## Headline finding
-
-(Edit before shipping so the strongest finding leads.)

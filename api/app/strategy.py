@@ -19,8 +19,14 @@ Reason briefly about why B won, then write a self-contained image-generation pro
 that embodies the chosen strategy.
 
 Strategy definitions:
-- preserve_look: keep B's visual style, mood, and lighting; allow the subject to
-  vary. Write a prompt describing a NEW subject that inherits B's stylistic adjectives.
+Strategy definitions:
+- preserve_look: borrow B's visual style, mood, lighting, and colour — but introduce
+  a completely different subject. The instruction MUST open with a new subject that
+  does not appear in the original prompt or in B, then carry B's stylistic adjectives.
+  Do NOT name or reference B's subject anywhere in the instruction. The model receives
+  image_ref pointing at B for style conditioning, so the prompt must signal a clear
+  subject change to override it (e.g. "a ceramic tea set on linen, golden-hour warmth,
+  shallow depth of field, muted earth tones" when B showed a typewriter).
 - preserve_subject: keep B's subject identity; allow scene variation. Write a prompt
   that names B's subject in a NEW context or setting.
 - tweak: surgical edit on B. Write a near-copy of the original prompt with exactly
