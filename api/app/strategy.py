@@ -1,5 +1,8 @@
+import asyncio
+import base64
 import json
 import re
+import urllib.request
 
 from anthropic import AsyncAnthropic
 
@@ -10,6 +13,16 @@ from app.models import Strategy, WrittenInstruction
 _client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+async def _fetch_b64(url: str) -> tuple[str, str]:
+    """Download an image URL and return (base64_data, media_type)."""
+    def _fetch():
+        with urllib.request.urlopen(url, timeout=30) as r:
+            data = r.read()
+            media_type = r.headers.get("Content-Type", "image/png").split(";")[0]
+            return base64.standard_b64encode(data).decode(), media_type
+    return await asyncio.get_event_loop().run_in_executor(None, _fetch)
 
 _SYSTEM_PROMPT = """\
 You write image edit instructions for Luma UNI-1. The user picked image B over image A.
@@ -57,6 +70,11 @@ async def write_instruction(
     runner_up_url: str,
     strategy: Strategy,
 ) -> WrittenInstruction:
+    (winner_b64, winner_mime), (runner_up_b64, runner_up_mime) = await asyncio.gather(
+        _fetch_b64(winner_url),
+        _fetch_b64(runner_up_url),
+    )
+
     msg = await _client.messages.create(
         model=settings.ANTHROPIC_MODEL,
         max_tokens=ANTHROPIC_MAX_TOKENS,
@@ -69,9 +87,9 @@ async def write_instruction(
                         "type": "text",
                         "text": f"Original prompt: {prompt!r}\nStrategy: {strategy}\n\nImage A (the runner-up):",
                     },
-                    {"type": "image", "source": {"type": "url", "url": runner_up_url}},
+                    {"type": "image", "source": {"type": "base64", "media_type": runner_up_mime, "data": runner_up_b64}},
                     {"type": "text", "text": "Image B (the winner):"},
-                    {"type": "image", "source": {"type": "url", "url": winner_url}},
+                    {"type": "image", "source": {"type": "base64", "media_type": winner_mime, "data": winner_b64}},
                 ],
             }
         ],
