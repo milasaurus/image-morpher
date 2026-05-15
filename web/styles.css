@@ -153,6 +153,17 @@ textarea::placeholder { color: var(--muted); }
   min-width: 2.5rem;
 }
 
+.loading-prompt {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+  max-width: 640px;
+  line-height: 1.55;
+  min-height: 1.2rem;
+}
+
 .skeleton-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;

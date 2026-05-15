@@ -26,6 +26,7 @@ class RoundRequest(BaseModel):
 class RoundResponse(BaseModel):
     images: list[str]
     rationale: str | None = None
+    instruction: str | None = None
     strategy: Strategy | None = None
 
 

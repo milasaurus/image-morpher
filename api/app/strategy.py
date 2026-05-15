@@ -4,6 +4,7 @@ import re
 from anthropic import AsyncAnthropic
 
 from app.config import settings
+from app.constants import ANTHROPIC_MAX_TOKENS
 from app.models import Strategy, WrittenInstruction
 
 _client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
@@ -46,7 +47,7 @@ async def write_instruction(
 ) -> WrittenInstruction:
     msg = await _client.messages.create(
         model=settings.ANTHROPIC_MODEL,
-        max_tokens=600,
+        max_tokens=ANTHROPIC_MAX_TOKENS,
         system=_SYSTEM_PROMPT,
         messages=[
             {

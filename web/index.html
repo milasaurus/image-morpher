@@ -32,6 +32,7 @@
       <span class="dots"><span>.</span><span>.</span><span>.</span></span>
       <span class="loading-timer" id="loading-timer"></span>
     </div>
+    <p class="loading-prompt" id="loading-prompt"></p>
     <div class="skeleton-pair">
       <div class="skeleton-card"></div>
       <div class="skeleton-card"></div>
@@ -144,6 +145,10 @@
       document.getElementById('loading-timer').textContent = '';
     }
 
+    function setLoadingPrompt(text) {
+      document.getElementById('loading-prompt').textContent = text || '';
+    }
+
     function setError(msg) {
       const el = document.getElementById('error-msg');
       el.textContent = msg;
@@ -169,6 +174,7 @@
       setError('');
 
       document.getElementById('loading-msg').textContent = 'Generating two images in parallel';
+      setLoadingPrompt('');
       show('loading-section');
       startTimer();
 
@@ -217,6 +223,7 @@
     async function pickStrategy(strategy) {
       setError('');
       document.getElementById('loading-msg').textContent = 'Writing the next prompt and generating';
+      setLoadingPrompt('');
       show('loading-section');
       startTimer();
 
@@ -227,6 +234,7 @@
           runner_up_url: pendingRunnerUp,
           strategy,
         });
+        if (data.instruction) setLoadingPrompt(`→ "${data.instruction}"`);
         urlA = pendingWinner;
         urlB = data.images[0];
         roundNumber++;

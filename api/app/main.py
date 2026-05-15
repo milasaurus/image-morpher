@@ -40,7 +40,7 @@ async def post_round(req: RoundRequest):
             req.prompt, req.winner_url, req.runner_up_url, req.strategy
         )
         new_b = await generate(choice.instruction, image_ref=[{"url": req.winner_url}])
-        return RoundResponse(images=[new_b], rationale=choice.rationale, strategy=req.strategy)
+        return RoundResponse(images=[new_b], rationale=choice.rationale, instruction=choice.instruction, strategy=req.strategy)
 
     except (GenerationFailed, GenerationTimeout) as exc:
         kind = "generation_failed" if isinstance(exc, GenerationFailed) else "generation_timeout"
