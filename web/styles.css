@@ -161,10 +161,6 @@ textarea::placeholder { color: var(--muted); }
   border: 1px solid var(--border);
   border-left: 2px solid var(--border-hi);
   border-radius: 0 6px 6px 0;
-  max-height: 6rem;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
 }
 
 .loading-prompt-label {
