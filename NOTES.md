@@ -17,6 +17,7 @@ This killed the original design (LLM picks the strategy). Two gate cases confirm
 ## UNI-1 latency is 30–60 s per generation, not 10–20 s
 
 Round 0 (two parallel calls): ~47 s. Round N (one serial call with `image_ref`): ~62 s. An 8–10 round session is 10–15 minutes of waiting. The design goal of "latency feels like part of the craft" is at risk on longer sessions.
+
 ---
 
 ## Each generation costs ~60 s — wrong guesses are expensive

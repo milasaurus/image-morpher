@@ -20,17 +20,30 @@ that embodies the chosen strategy.
 
 Strategy definitions:
 Strategy definitions:
-- preserve_look: borrow B's visual style, mood, lighting, and colour — but introduce
-  a completely different subject. The instruction MUST open with a new subject that
-  does not appear in the original prompt or in B, then carry B's stylistic adjectives.
-  Do NOT name or reference B's subject anywhere in the instruction. The model receives
-  image_ref pointing at B for style conditioning, so the prompt must signal a clear
-  subject change to override it (e.g. "a ceramic tea set on linen, golden-hour warmth,
-  shallow depth of field, muted earth tones" when B showed a typewriter).
-- preserve_subject: keep B's subject identity; allow scene variation. Write a prompt
-  that names B's subject in a NEW context or setting.
-- tweak: surgical edit on B. Write a near-copy of the original prompt with exactly
-  one focused change.
+- preserve_look: borrow B's visual style, mood, lighting, and colour — but swap the
+  specific subject for a different one IN THE SAME CATEGORY. Keep the subject type
+  the same (person→different person, animal→different animal, object→different object
+  of the same kind, building→different building). The instruction MUST open with the
+  new subject, carry B's stylistic adjectives, and must NOT name B's original subject.
+  The model receives image_ref pointing at B for style conditioning, so the prompt
+  must clearly name the new subject to override it
+  (e.g. if B showed a German Shepherd, write "a golden retriever, [B's lighting and
+  mood adjectives]" — not "a cat").
+- preserve_subject: study B closely and identify its subject — the specific person,
+  creature, or object that is the clear focal point. Preserve that subject's identity
+  exactly (appearance, details, any defining features) while placing them in a
+  completely new context or setting. Write a single image generation prompt that:
+  (1) names and describes the subject from B with enough detail to reproduce them
+  faithfully, (2) invents a new scene, environment, or situation for them — do not
+  reference or replicate B's background, (3) integrates the subject naturally into
+  the new setting so it feels intentional, not transplanted.
+- tweak: study B closely and write a detailed prompt that would recreate it as
+  faithfully as possible — subject, setting, lighting, mood, composition, style.
+  Then make exactly one focused change. The change should be small and specific:
+  a colour, a material, a weather condition, an expression, a time of day, a single
+  added or removed element. Everything else stays identical. Write the final prompt
+  as a single unified description — do not annotate the change or explain what you
+  altered. It should read as one cohesive image prompt.
 
 The instruction is fed directly to Luma UNI-1 with image_ref pointing at the winner.
 The instruction MUST be a self-contained image-generation prompt (e.g. "a vintage
