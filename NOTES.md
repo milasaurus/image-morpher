@@ -30,6 +30,8 @@ This killed the original design (LLM picks the strategy). Two gate cases confirm
 
 Round 0 (two parallel calls): ~47 s. Round N (one serial call with `image_ref`): ~62 s. An 8–10 round session is 10–15 minutes of waiting. The design goal of "latency feels like part of the craft" is at risk on longer sessions.
 
+`preserve_look` via `image_edit` hit 180 s timeouts in testing — longer than the other strategies, likely because replacing a subject while preserving style is a harder edit for the model. `POLL_TIMEOUT_S` was bumped from 180 to 300 to accommodate this.
+
 ---
 
 ## Each generation costs ~60 s — wrong guesses are expensive
