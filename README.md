@@ -1,6 +1,6 @@
 # image morpher
 
-I kept finding myself switching between Claude and Luma — paste a prompt into Luma, see the result, go back to Claude to refine the prompt, paste it again. That one extra step added real friction. Luma is great at reasoning about images, but the image is only as good as the prompt, and writing that prompt well required a separate tool and a separate context switch.
+I kept finding myself switching between Claude and Luma — paste a prompt into Luma, see the result, go back to Claude to refine the prompt, paste it again. That one extra step added real friction. Good image generation requires detailed prompts — subject, lighting, mood, composition, colour grade — and writing those out precisely is tedious. Luma is great at reasoning about images, but the image is only as good as the prompt, and writing that prompt well required a separate tool and a separate context switch.
 
 Image morpher removes the switch. Pick the better image each round; Claude looks at both images and translates what's visually strong in your pick into a precise generation prompt — subject, lighting, mood, colour, composition — then sends that to Luma. Your taste drives it, not your prompt engineering.
 
