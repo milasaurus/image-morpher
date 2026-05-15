@@ -597,6 +597,8 @@ in new tab. Different strategies used. Loop stays coherent.
 - Luma agents API guide:
   https://docs.agents.lumalabs.ai/guides/image-generation/
 - Luma agents Python SDK: https://docs.agents.lumalabs.ai/api/python
+- Luma prompt guide (Cinematic Control template, structured JSON format, per-element
+  guidance): https://docs.agents.lumalabs.ai/guides/prompt-guide/
 - Anthropic SDK: https://docs.anthropic.com/en/api/getting-started
 - Verified Luma agents API surface:
   - `POST agents.lumalabs.ai/v1/generations` returns `201` with

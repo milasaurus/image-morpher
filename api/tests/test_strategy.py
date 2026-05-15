@@ -14,7 +14,7 @@ def _mock_response(text: str):
 
 async def test_write_instruction_returns_written_instruction():
     mock_resp = _mock_response(
-        '{"rationale": "B has warmer lighting", "instruction": "a typewriter in warm light"}'
+        '{"rationale": "B has warmer lighting", "instruction": "Change the lighting to warm golden hour. Keep everything else exactly the same."}'
     )
     with patch("app.strategy._client") as mock_client:
         mock_client.messages.create = AsyncMock(return_value=mock_resp)
@@ -27,12 +27,12 @@ async def test_write_instruction_returns_written_instruction():
 
     assert isinstance(result, WrittenInstruction)
     assert result.rationale == "B has warmer lighting"
-    assert result.instruction == "a typewriter in warm light"
+    assert result.instruction == "Change the lighting to warm golden hour. Keep everything else exactly the same."
 
 
 async def test_write_instruction_passes_strategy_in_user_message():
     for strategy in ("preserve_look", "preserve_subject", "tweak"):
-        mock_resp = _mock_response(f'{{"rationale": "B won", "instruction": "prompt for {strategy}"}}')
+        mock_resp = _mock_response(f'{{"rationale": "B won", "instruction": "Edit instruction for {strategy}"}}')
         with patch("app.strategy._client") as mock_client:
             mock_client.messages.create = AsyncMock(return_value=mock_resp)
             result = await write_instruction(
@@ -42,7 +42,7 @@ async def test_write_instruction_passes_strategy_in_user_message():
                 strategy,
             )
 
-        assert result.instruction == f"prompt for {strategy}"
+        assert result.instruction == f"Edit instruction for {strategy}"
         user_text = mock_client.messages.create.call_args.kwargs["messages"][0]["content"][0]["text"]
         assert strategy in user_text
 
@@ -61,9 +61,8 @@ async def test_write_instruction_raises_on_bad_json():
 
 
 async def test_write_instruction_extracts_first_json_block():
-    # Response with prose before the JSON block — regex should find the first {…}
     mock_resp = _mock_response(
-        'Sure! Here is my analysis. {"rationale": "B is moodier", "instruction": "a dark typewriter"}'
+        'Sure! {"rationale": "B is moodier", "instruction": "Change the lighting to dramatic side light. Keep everything else the same."}'
     )
     with patch("app.strategy._client") as mock_client:
         mock_client.messages.create = AsyncMock(return_value=mock_resp)
@@ -75,4 +74,4 @@ async def test_write_instruction_extracts_first_json_block():
         )
 
     assert result.rationale == "B is moodier"
-    assert result.instruction == "a dark typewriter"
+    assert "dramatic side light" in result.instruction

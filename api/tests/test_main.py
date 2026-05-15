@@ -11,7 +11,7 @@ BASE = "http://test"
 
 
 async def test_round_0_returns_two_images():
-    with patch("app.main.generate", new_callable=AsyncMock) as mock_gen:
+    with patch("app.main.edit", new_callable=AsyncMock) as mock_gen:
         mock_gen.side_effect = ["https://cdn.luma.com/a.png", "https://cdn.luma.com/b.png"]
         async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
             resp = await client.post("/api/round", json={"prompt": "a vintage typewriter"})
@@ -27,7 +27,7 @@ async def test_round_0_returns_two_images():
 async def test_round_n_calls_write_instruction_with_strategy():
     choice = WrittenInstruction(rationale="B is moodier", instruction="a typewriter in moodier light")
     with patch("app.main.write_instruction", new_callable=AsyncMock, return_value=choice), \
-         patch("app.main.generate", new_callable=AsyncMock, return_value="https://cdn.luma.com/new.png"):
+         patch("app.main.edit", new_callable=AsyncMock, return_value="https://cdn.luma.com/new.png"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
             resp = await client.post("/api/round", json={
                 "prompt": "a vintage typewriter",
@@ -47,7 +47,7 @@ async def test_round_n_calls_write_instruction_with_strategy():
 async def test_round_n_passes_each_strategy_to_write_instruction(strategy: str):
     choice = WrittenInstruction(rationale="B won", instruction="next prompt")
     with patch("app.main.write_instruction", new_callable=AsyncMock, return_value=choice) as mock_wi, \
-         patch("app.main.generate", new_callable=AsyncMock, return_value="https://cdn.luma.com/new.png"):
+         patch("app.main.edit", new_callable=AsyncMock, return_value="https://cdn.luma.com/new.png"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
             await client.post("/api/round", json={
                 "prompt": "a wolf",
@@ -72,7 +72,7 @@ async def test_round_n_missing_strategy_returns_422():
 
 
 async def test_generation_failed_returns_502():
-    with patch("app.main.generate", new_callable=AsyncMock,
+    with patch("app.main.edit", new_callable=AsyncMock,
                side_effect=GenerationFailed("content policy")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
             resp = await client.post("/api/round", json={"prompt": "a wolf"})
@@ -86,7 +86,7 @@ async def test_generation_failed_returns_502():
 async def test_round_n_generation_failed_returns_502():
     choice = WrittenInstruction(rationale="B won", instruction="next prompt")
     with patch("app.main.write_instruction", new_callable=AsyncMock, return_value=choice), \
-         patch("app.main.generate", new_callable=AsyncMock,
+         patch("app.main.edit", new_callable=AsyncMock,
                side_effect=GenerationFailed("timeout on anchor")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
             resp = await client.post("/api/round", json={

@@ -32,10 +32,13 @@
       <span class="dots"><span>.</span><span>.</span><span>.</span></span>
       <span class="loading-timer" id="loading-timer"></span>
     </div>
-    <p class="loading-prompt" id="loading-prompt"></p>
     <div class="skeleton-pair">
       <div class="skeleton-card"></div>
       <div class="skeleton-card"></div>
+    </div>
+    <div class="loading-prompt" id="loading-prompt-wrap" style="display:none">
+      <span class="loading-prompt-label" id="loading-prompt-label">Prompt →</span>
+      <p class="loading-prompt-text" id="loading-prompt"></p>
     </div>
   </section>
 
@@ -59,6 +62,7 @@
         </div>
         <div class="slot-meta">
           <span class="slot-letter">A</span>
+          <span class="slot-status" id="slot-a-status"></span>
         </div>
       </div>
 
@@ -145,8 +149,10 @@
       document.getElementById('loading-timer').textContent = '';
     }
 
-    function setLoadingPrompt(text) {
+    function setLoadingPrompt(text, label) {
       document.getElementById('loading-prompt').textContent = text || '';
+      document.getElementById('loading-prompt-wrap').style.display = text ? 'block' : 'none';
+      if (label) document.getElementById('loading-prompt-label').textContent = label;
     }
 
     function setError(msg) {
@@ -166,6 +172,17 @@
       return data;
     }
 
+    async function post(path, body) {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+      return data;
+    }
+
     async function submitPrompt() {
       const val = document.getElementById('prompt-input').value.trim();
       if (!val) return;
@@ -174,7 +191,7 @@
       setError('');
 
       document.getElementById('loading-msg').textContent = 'Generating two images in parallel';
-      setLoadingPrompt('');
+      setLoadingPrompt(prompt, 'Your prompt →');
       show('loading-section');
       startTimer();
 
@@ -210,6 +227,7 @@
           : `Round ${roundNumber} of ${NUM_ROUNDS} — pick your favourite`;
 
       document.getElementById('done-btn').style.display = roundNumber >= 1 ? 'inline-flex' : 'none';
+      document.getElementById('slot-a-status').textContent = roundNumber >= 1 ? 'your pick' : '';
 
       show('picking-section');
     }
@@ -222,28 +240,46 @@
 
     async function pickStrategy(strategy) {
       setError('');
-      document.getElementById('loading-msg').textContent = 'Writing the next prompt and generating';
+      document.getElementById('loading-msg').textContent = 'Writing prompt';
       setLoadingPrompt('');
       show('loading-section');
       startTimer();
 
+      let instruction, rationale;
       try {
-        const data = await postRound({
+        const written = await post('/api/write-instruction', {
           prompt,
           winner_url: pendingWinner,
           runner_up_url: pendingRunnerUp,
           strategy,
         });
-        if (data.instruction) setLoadingPrompt(`→ "${data.instruction}"`);
+        instruction = written.instruction;
+        rationale = written.rationale;
+        const strategyLabel = { tweak: 'Refine this', preserve_look: 'New subject, same look', preserve_subject: 'New scene, same subject' }[strategy] || 'Claude\'s instruction';
+        setLoadingPrompt(instruction, `${strategyLabel} — Claude's prompt →`);
+        document.getElementById('loading-msg').textContent = 'Generating image';
+      } catch (e) {
+        stopTimer();
+        setError(`Failed to write prompt: ${e.message}`);
+        show('strategy-section');
+        return;
+      }
+
+      try {
+        const generated = await post('/api/generate', {
+          instruction,
+          winner_url: pendingWinner,
+          strategy,
+        });
         urlA = pendingWinner;
-        urlB = data.images[0];
+        urlB = generated.image;
         roundNumber++;
         stopTimer();
 
         if (roundNumber >= NUM_ROUNDS) {
           renderDone(urlA);
         } else {
-          renderPicking(data.rationale, data.strategy);
+          renderPicking(rationale, strategy);
         }
       } catch (e) {
         stopTimer();

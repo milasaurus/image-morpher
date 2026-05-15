@@ -30,6 +30,28 @@ class RoundResponse(BaseModel):
     strategy: Strategy | None = None
 
 
+class WriteInstructionRequest(BaseModel):
+    prompt: str
+    winner_url: str
+    runner_up_url: str
+    strategy: Strategy
+
+
+class WriteInstructionResponse(BaseModel):
+    instruction: str
+    rationale: str
+
+
+class GenerateRequest(BaseModel):
+    instruction: str
+    winner_url: str
+    strategy: Strategy
+
+
+class GenerateResponse(BaseModel):
+    image: str
+
+
 class ErrorResponse(BaseModel):
     error: Literal["generation_failed", "generation_timeout", "strategy_error", "internal_error"]
     detail: str

@@ -5,8 +5,8 @@ import pytest
 from app.luma import (
     GenerationFailed,
     GenerationTimeout,
+    edit,
     generate,
-    generate_with_anchor,
 )
 
 
@@ -95,20 +95,21 @@ async def test_generate_raises_on_timeout():
             await generate("some prompt")
 
 
-async def test_generate_with_anchor_passes_image_ref():
-    completed = _gen("completed", url="https://cdn.luma.com/anchored.png")
+async def test_edit_passes_source_and_prompt():
+    completed = _gen("completed", url="https://cdn.luma.com/edited.png")
 
     with patch("app.luma._client") as mock_client, \
          patch("app.luma.asyncio.sleep", new_callable=AsyncMock):
         mock_client.generations.create = AsyncMock(return_value=completed)
         mock_client.generations.get = AsyncMock(return_value=completed)
 
-        url = await generate_with_anchor(
-            "a leather journal in warm light",
+        url = await edit(
             "https://cdn.luma.com/winner.png",
+            "Change the lighting to golden hour. Keep everything else the same.",
         )
 
-    assert url == "https://cdn.luma.com/anchored.png"
+    assert url == "https://cdn.luma.com/edited.png"
     call_kwargs = mock_client.generations.create.call_args.kwargs
-    assert call_kwargs["image_ref"] == [{"url": "https://cdn.luma.com/winner.png"}]
-    assert call_kwargs["prompt"] == "a leather journal in warm light"
+    assert call_kwargs["type"] == "image_edit"
+    assert call_kwargs["source"] == {"url": "https://cdn.luma.com/winner.png"}
+    assert "golden hour" in call_kwargs["prompt"]
