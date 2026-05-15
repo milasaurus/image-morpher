@@ -6,6 +6,8 @@ Image morpher removes the switch. Pick the better image each round; Claude inter
 
 <img width="1087" height="395" alt="image" src="https://github.com/user-attachments/assets/be5c6beb-525d-4ed7-8e9f-cfec3efa86ef" />
 
+<img width="470" height="305" alt="image" src="https://github.com/user-attachments/assets/cad966b9-0fee-4221-9993-24675d78338b" />
+
 ---
 
 ## Setup
