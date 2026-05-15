@@ -1,8 +1,8 @@
 # image morpher
 
-Getting from "pretty good" to "exactly right" in generative image tools means manually translating taste into prompt edits. Most people don't speak that language fluently.
+I kept finding myself switching between Claude and Luma — paste a prompt into Luma, see the result, go back to Claude to refine the prompt, paste it again. That one extra step added real friction. Luma is great at reasoning about images, but the image is only as good as the prompt, and writing that prompt well required a separate tool and a separate context switch.
 
-Image Morpher replaces prompt tweaking with picking. Choose the better image each round; Claude interprets what you preferred and writes the next prompt. Your taste drives it, not your prompt engineering.
+Image morpher removes the switch. Pick the better image each round; Claude interprets what you preferred and writes the next prompt. Your taste drives it, not your prompt engineering.
 
 <img width="1087" height="395" alt="image" src="https://github.com/user-attachments/assets/be5c6beb-525d-4ed7-8e9f-cfec3efa86ef" />
 
