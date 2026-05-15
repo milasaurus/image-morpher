@@ -4,6 +4,8 @@ Getting from "pretty good" to "exactly right" in generative image tools means ma
 
 Image Morpher replaces prompt tweaking with picking. Choose the better image each round; Claude interprets what you preferred and writes the next prompt. Your taste drives it, not your prompt engineering.
 
+<img width="1087" height="395" alt="image" src="https://github.com/user-attachments/assets/be5c6beb-525d-4ed7-8e9f-cfec3efa86ef" />
+
 ---
 
 ## Setup
