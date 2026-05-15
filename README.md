@@ -4,7 +4,7 @@ I kept finding myself switching between Claude and Luma — paste a prompt into 
 
 Image morpher removes the switch. Pick the better image each round; Claude interprets what you preferred and writes the next prompt. Your taste drives it, not your prompt engineering.
 
-<img width="1128" height="407" alt="image" src="https://github.com/user-attachments/assets/85c78c1b-b8dd-4c52-aeb1-781050adb623" />
+<img width="1085" height="363" alt="image" src="https://github.com/user-attachments/assets/9f11a371-a8c1-4744-8ac6-17e4abfac4b7" />
 
 <img width="470" height="305" alt="image" src="https://github.com/user-attachments/assets/cad966b9-0fee-4221-9993-24675d78338b" />
 
