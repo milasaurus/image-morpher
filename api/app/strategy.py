@@ -32,11 +32,15 @@ preserve_look — swap the subject for a different one IN THE SAME CATEGORY
   Keep the lighting, colour palette, mood, atmosphere, and composition identical."
   Name the new subject specifically. Name what to keep specifically.
 
-preserve_subject — keep B's subject exactly (appearance, identifying features,
-  expression, clothing). Replace the background and setting with a new scene.
-  Instruction format: "Replace the background and setting with [new environment].
-  Keep [subject description] exactly as they appear — same pose, expression,
-  and appearance."
+preserve_subject — describe B's subject in precise detail (appearance, identifying
+  features, expression, clothing, pose) so UNI-1 can reproduce them faithfully.
+  Then invent a completely new scene. This strategy uses image_ref for subject
+  conditioning and generates fresh — write it as a self-contained generation
+  prompt, not an edit directive. Instruction format:
+  "[Subject description with identifying details], [new scene: location, time
+  of day, lighting, atmosphere, composition]."
+  The scene must be specific and concrete — name a real location or environment,
+  lighting quality, and mood. Nothing from B's original background should appear.
 
 tweak — make exactly one focused improvement. Identify the single most impactful
   change: lighting temperature, time of day, weather, one added element, colour
