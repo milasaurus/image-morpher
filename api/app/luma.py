@@ -31,6 +31,7 @@ async def generate(prompt: str, image_ref: list[dict] | None = None) -> str:
         "model": settings.LUMA_MODEL,
         "type": "image",
         "output_format": "png",
+        "aspect_ratio": "1:1",
     }
     if image_ref:
         kwargs["image_ref"] = image_ref
@@ -49,6 +50,24 @@ async def generate(prompt: str, image_ref: list[dict] | None = None) -> str:
         await asyncio.sleep(POLL_INTERVAL_S)
 
 
-async def generate_with_anchor(instruction: str, anchor_url: str) -> str:
-    """Round-N generation: produce the next image conditioned on the anchor."""
-    return await generate(instruction, image_ref=[_image_ref_entry(anchor_url)])
+async def edit(source_url: str, instruction: str) -> str:
+    """Image edit: apply instruction while preserving everything not mentioned."""
+    kwargs: dict = {
+        "type": "image_edit",
+        "source": {"url": source_url},
+        "prompt": instruction,
+        "model": settings.LUMA_MODEL,
+        "output_format": "png",
+    }
+    gen = await _client.generations.create(**kwargs)
+    deadline = time.monotonic() + POLL_TIMEOUT_S
+
+    while True:
+        gen = await _client.generations.get(gen.id)
+        if gen.state == "completed":
+            return gen.output[0].url
+        if gen.state == "failed":
+            raise GenerationFailed(gen.failure_reason or "unknown")
+        if time.monotonic() > deadline:
+            raise GenerationTimeout(f"generation {gen.id} did not complete in {POLL_TIMEOUT_S}s")
+        await asyncio.sleep(POLL_INTERVAL_S)

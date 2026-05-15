@@ -12,49 +12,38 @@ _client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 _SYSTEM_PROMPT = """\
-You help refine image generations. The user picked image B over image A (both
-generated from the same text prompt) and has chosen a strategy for the next round.
+You write image edit instructions for Luma UNI-1. The user picked image B over image A.
+B will be passed as the source image for editing — UNI-1 preserves everything you do
+not mention, so be specific about what to change and explicit about what to keep.
 
-Reason briefly about why B won, then write a self-contained image-generation prompt
-that embodies the chosen strategy.
+Output a single JSON object:
 
-Strategy definitions:
-Strategy definitions:
-- preserve_look: borrow B's visual style, mood, lighting, and colour — but swap the
-  specific subject for a different one IN THE SAME CATEGORY. Keep the subject type
-  the same (person→different person, animal→different animal, object→different object
-  of the same kind, building→different building). The instruction MUST open with the
-  new subject, carry B's stylistic adjectives, and must NOT name B's original subject.
-  The model receives image_ref pointing at B for style conditioning, so the prompt
-  must clearly name the new subject to override it
-  (e.g. if B showed a German Shepherd, write "a golden retriever, [B's lighting and
-  mood adjectives]" — not "a cat").
-- preserve_subject: study B closely and identify its subject — the specific person,
-  creature, or object that is the clear focal point. Preserve that subject's identity
-  exactly (appearance, details, any defining features) while placing them in a
-  completely new context or setting. Write a single image generation prompt that:
-  (1) names and describes the subject from B with enough detail to reproduce them
-  faithfully, (2) invents a new scene, environment, or situation for them — do not
-  reference or replicate B's background, (3) integrates the subject naturally into
-  the new setting so it feels intentional, not transplanted.
-- tweak: study B closely and write a detailed prompt that would recreate it as
-  faithfully as possible — subject, setting, lighting, mood, composition, style.
-  Then make exactly one focused change. The change should be small and specific:
-  a colour, a material, a weather condition, an expression, a time of day, a single
-  added or removed element. Everything else stays identical. Write the final prompt
-  as a single unified description — do not annotate the change or explain what you
-  altered. It should read as one cohesive image prompt.
-
-The instruction is fed directly to Luma UNI-1 with image_ref pointing at the winner.
-The instruction MUST be a self-contained image-generation prompt (e.g. "a vintage
-typewriter on a wooden desk in moodier lighting"), NEVER a constraint description —
-constraint phrasing becomes the literal UNI-1 prompt and produces garbage.
-
-Output JSON only:
 {
   "rationale": "<1-2 sentences on why B won>",
-  "instruction": "<self-contained image-generation prompt for next round>"
+  "instruction": "<edit directive for UNI-1>"
 }
+
+Strategy rules:
+
+preserve_look — swap the subject for a different one IN THE SAME CATEGORY
+  (person→different person, animal→same-type animal, object→same-type object).
+  Keep B's lighting, colour palette, mood, atmosphere, and composition exactly.
+  Instruction format: "Replace [B's subject] with [new subject of same category].
+  Keep the lighting, colour palette, mood, atmosphere, and composition identical."
+  Name the new subject specifically. Name what to keep specifically.
+
+preserve_subject — keep B's subject exactly (appearance, identifying features,
+  expression, clothing). Replace the background and setting with a new scene.
+  Instruction format: "Replace the background and setting with [new environment].
+  Keep [subject description] exactly as they appear — same pose, expression,
+  and appearance."
+
+tweak — make exactly one focused improvement. Identify the single most impactful
+  change: lighting temperature, time of day, weather, one added element, colour
+  grade, expression, or mood shift. Keep everything else identical.
+  Instruction format: "Change [specific element] to [new version].
+  Keep everything else exactly the same."
+  Be surgical. One change only.
 """
 
 

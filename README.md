@@ -1,8 +1,8 @@
 # image morpher
 
-I kept finding myself switching between Claude and Luma — paste a prompt into Luma, see the result, go back to Claude to refine the prompt, paste it again. That one extra step added real friction. Luma is great at reasoning about images, but the image is only as good as the prompt, and writing that prompt well required a separate tool and a separate context switch.
+I kept finding myself switching between Claude and Luma — paste a prompt into Luma, see the result, go back to Claude to refine the prompt, paste it again. That one extra step added real friction. Good image generation requires detailed prompts — subject, lighting, mood, composition, colour grade — and writing those out precisely is tedious. Luma is great at reasoning about images, but the image is only as good as the prompt, and writing that prompt well required a separate tool and a separate context switch.
 
-Image morpher removes the switch. Pick the better image each round; Claude interprets what you preferred and writes the next prompt. Your taste drives it, not your prompt engineering.
+Image morpher removes the switch. Pick the better image each round; Claude looks at both images and translates what's visually strong in your pick into a precise generation prompt — subject, lighting, mood, colour, composition — then sends that to Luma. Your taste drives it, not your prompt engineering.
 
 <img width="1111" height="628" alt="image" src="https://github.com/user-attachments/assets/c0265071-ca08-45fa-91fc-a06cd51306c6" />
 
@@ -42,9 +42,9 @@ Open **http://localhost:8080**. Press Ctrl+C to stop both servers.
 1. **Type a prompt** and click Generate. Two images appear in ~50 seconds.
 2. **Click the image you prefer.** It becomes the anchor for the next round.
 3. **Pick an intent:**
-   - 🎯 *Refine this* — one focused change, stay close
-   - 🎨 *New subject, same look* — keep the mood and style, swap what's in it
-   - 🌐 *New scene, same subject* — keep what's in it, change the setting
+   - 🎯 *Refine this* — one focused change, stay close. e.g. shift the lighting to golden hour, add rain, change the expression, deepen the shadows.
+   - 🎨 *New subject, same look* — keep the mood and style, swap what's in it. e.g. B was a wolf in dramatic fog → try a bear, a stag, a lone figure — same atmosphere.
+   - 🌐 *New scene, same subject* — keep who or what is in B, put them somewhere new. e.g. B was a woman on an overpass → same woman, now in a Tokyo subway car, a desert highway, a rain-soaked rooftop.
 4. **Repeat** until you're satisfied.
 5. **Click Done** to open the final image. Use Cmd/Ctrl+S to save it.
 

@@ -5,8 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.luma import GenerationFailed, GenerationTimeout, generate
-from app.models import ErrorResponse, RoundRequest, RoundResponse
+from app.luma import GenerationFailed, GenerationTimeout, edit, generate
+from app.models import (
+    ErrorResponse,
+    GenerateRequest,
+    GenerateResponse,
+    RoundRequest,
+    RoundResponse,
+    WriteInstructionRequest,
+    WriteInstructionResponse,
+)
 from app.strategy import write_instruction
 
 app = FastAPI()
@@ -26,6 +34,31 @@ def _error(kind: str, detail: str, status: int) -> JSONResponse:
     )
 
 
+@app.post("/api/write-instruction")
+async def post_write_instruction(req: WriteInstructionRequest):
+    try:
+        choice = await write_instruction(
+            req.prompt, req.winner_url, req.runner_up_url, req.strategy
+        )
+        return WriteInstructionResponse(instruction=choice.instruction, rationale=choice.rationale)
+    except ValueError as exc:
+        return _error("strategy_error", str(exc), 502)
+    except Exception as exc:
+        return _error("internal_error", str(exc), 502)
+
+
+@app.post("/api/generate")
+async def post_generate(req: GenerateRequest):
+    try:
+        url = await edit(req.winner_url, req.instruction)
+        return GenerateResponse(image=url)
+    except (GenerationFailed, GenerationTimeout) as exc:
+        kind = "generation_failed" if isinstance(exc, GenerationFailed) else "generation_timeout"
+        return _error(kind, str(exc), 502)
+    except Exception as exc:
+        return _error("internal_error", str(exc), 502)
+
+
 @app.post("/api/round")
 async def post_round(req: RoundRequest):
     try:
@@ -39,7 +72,7 @@ async def post_round(req: RoundRequest):
         choice = await write_instruction(
             req.prompt, req.winner_url, req.runner_up_url, req.strategy
         )
-        new_b = await generate(choice.instruction, image_ref=[{"url": req.winner_url}])
+        new_b = await edit(req.winner_url, choice.instruction)
         return RoundResponse(images=[new_b], rationale=choice.rationale, instruction=choice.instruction, strategy=req.strategy)
 
     except (GenerationFailed, GenerationTimeout) as exc:
