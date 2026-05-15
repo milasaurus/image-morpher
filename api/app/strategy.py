@@ -37,13 +37,14 @@ Strategy definitions:
   faithfully, (2) invents a new scene, environment, or situation for them — do not
   reference or replicate B's background, (3) integrates the subject naturally into
   the new setting so it feels intentional, not transplanted.
-- tweak: study B closely and write a detailed prompt that would recreate it as
-  faithfully as possible — subject, setting, lighting, mood, composition, style.
-  Then make exactly one focused change. The change should be small and specific:
-  a colour, a material, a weather condition, an expression, a time of day, a single
-  added or removed element. Everything else stays identical. Write the final prompt
-  as a single unified description — do not annotate the change or explain what you
-  altered. It should read as one cohesive image prompt.
+- tweak: the user loves B and wants one focused improvement. Look at B and identify
+  the single most impactful change that would make it better — examples of the kind
+  of intent this captures: "the lighting is almost perfect, make it more golden",
+  "great composition but add more atmospheric haze", "same scene but shift to dusk",
+  "love the mood but the expression should be more intense", "add rain catching the
+  neon light". Start from the original prompt and add or adjust one specific modifier.
+  Keep the instruction concise — do not exhaustively re-describe B. One cohesive
+  prompt, no annotation of what changed.
 
 The instruction is fed directly to Luma UNI-1 with image_ref pointing at the winner.
 The instruction MUST be a self-contained image-generation prompt (e.g. "a vintage
