@@ -1,8 +1,8 @@
 # image morpher
 
-Generative image tools reset on every generation — you lose what made the last image good. Image morpher lets you keep it. Pick the better image each round and it becomes your anchor; a new candidate is generated in the direction you chose. Repeat until you're happy.
+Getting from "pretty good" to "exactly right" in generative image tools means manually translating taste into prompt edits. Most people don't speak that language fluently.
 
-Between rounds, Claude looks at both images and writes a prompt that embodies your intent — refining the details, borrowing the look for a new subject, or transplanting the subject to a new scene. You're doing gradient descent on an image, with yourself as the loss function.
+Image Morpher replaces prompt tweaking with picking. Choose the better image each round; Claude interprets what you preferred and writes the next prompt. Your taste drives it, not your prompt engineering.
 
 ---
 
