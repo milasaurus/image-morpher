@@ -243,8 +243,6 @@ textarea::placeholder { color: var(--muted); }
 
 .slot-img {
   width: 100%;
-  max-height: calc(100vh - 160px);
-  object-fit: cover;
   display: block;
   border-radius: 10px;
   transition: transform 0.2s ease;
