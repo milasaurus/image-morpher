@@ -25,6 +25,10 @@ Image morpher removes the switch. Pick the better image each round; Claude looks
 <img width="1093" height="148" alt="image" src="https://github.com/user-attachments/assets/d2f82410-c47a-4cf1-804f-3165dfeee8f8" />
 
 ---
+## New Scene Same Subject Strategy
+<img width="1125" height="664" alt="image" src="https://github.com/user-attachments/assets/9f252b16-5ff2-4ec5-818b-3fb7c72d41b8" />
+
+---
 ## Setup
 
 **Prerequisites:** Python 3.11+, [uv](https://docs.astral.sh/uv/), a [Luma](https://lumalabs.ai) API key, and an [Anthropic](https://console.anthropic.com) API key.
