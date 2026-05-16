@@ -75,7 +75,6 @@
         </div>
         <div class="slot-meta">
           <span class="slot-letter">B</span>
-          <p id="rationale" class="rationale" style="display:none"></p>
         </div>
       </div>
     </div>
@@ -87,15 +86,15 @@
 
     <button class="btn-strategy" onclick="pickStrategy('tweak')">
       <span class="strategy-name">🎯  Refine this</span>
-      <span class="strategy-desc">Stay close — one focused change</span>
+      <span class="strategy-desc">Add detail, change the action, enrich the scene</span>
     </button>
     <button class="btn-strategy" onclick="pickStrategy('preserve_look')">
       <span class="strategy-name">🎨  New subject, same look</span>
-      <span class="strategy-desc">Keep B's mood and style, swap the subject</span>
+      <span class="strategy-desc">Keep the mood and style, swap the subject</span>
     </button>
     <button class="btn-strategy" onclick="pickStrategy('preserve_subject')">
       <span class="strategy-name">🌐  New scene, same subject</span>
-      <span class="strategy-desc">Keep B's subject, put it somewhere new</span>
+      <span class="strategy-desc">Keep the subject, put it somewhere new</span>
     </button>
   </section>
 
@@ -128,6 +127,7 @@
     let pendingRunnerUp = null;
     let roundNumber = 0;
     let timerInterval = null;
+    let previousInstructions = [];
 
     function show(id) {
       document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
@@ -198,7 +198,7 @@
         urlA = data.images[0];
         urlB = data.images[1];
         stopTimer();
-        renderPicking(null, null);
+        renderPicking();
       } catch (e) {
         stopTimer();
         setError(`Generation failed: ${e.message}`);
@@ -206,20 +206,11 @@
       }
     }
 
-    function renderPicking(rationale, strategy) {
+    function renderPicking() {
       document.getElementById('img-a').src = urlA;
       document.getElementById('img-b').src = urlB;
 
-      const rationaleEl = document.getElementById('rationale');
-      if (rationale) {
-        const label = STRATEGY_LABELS[strategy] || '';
-        rationaleEl.textContent = label ? `${label} — ${rationale}` : rationale;
-        rationaleEl.style.display = 'block';
-      } else {
-        rationaleEl.style.display = 'none';
-      }
-
-      document.getElementById('round-label').textContent =
+document.getElementById('round-label').textContent =
         roundNumber === 0
           ? `Pick your favourite  ·  ${NUM_ROUNDS} rounds total`
           : `Round ${roundNumber} of ${NUM_ROUNDS} — pick your favourite`;
@@ -243,15 +234,16 @@
       show('loading-section');
       startTimer();
 
-      let instruction, rationale;
+      let instruction;
       try {
         const written = await post('/api/write-instruction', {
           prompt,
           winner_url: pendingWinner,
           strategy,
+          previous_instructions: previousInstructions,
         });
         instruction = written.instruction;
-        rationale = written.rationale;
+        previousInstructions.push(instruction);
         const strategyLabel = { tweak: 'Refine this', preserve_look: 'New subject, same look', preserve_subject: 'New scene, same subject' }[strategy] || 'Claude\'s instruction';
         setLoadingPrompt(instruction, `${strategyLabel} — Claude's prompt →`);
         document.getElementById('loading-msg').textContent = 'Generating image';
@@ -276,7 +268,7 @@
         if (roundNumber >= NUM_ROUNDS) {
           renderDone(urlA);
         } else {
-          renderPicking(rationale, strategy);
+          renderPicking();
         }
       } catch (e) {
         stopTimer();
@@ -303,6 +295,7 @@
       prompt = '';
       document.getElementById('prompt-input').value = '';
       document.getElementById('done-btn').style.display = 'none';
+      previousInstructions = [];
       setError('');
       show('prompt-section');
     }

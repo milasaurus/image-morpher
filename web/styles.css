@@ -65,15 +65,6 @@ section.active {
 /* ── prompt ── */
 #prompt-section { max-width: 540px; }
 
-.prompt-label {
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  color: var(--muted);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-bottom: 0.75rem;
-}
-
 textarea {
   width: 100%;
   background: var(--surface);
@@ -326,20 +317,12 @@ textarea::placeholder { color: var(--muted); }
 .slot-status {
   font-family: var(--mono);
   font-size: 0.65rem;
-  color: #444;
+  color: #666;
   letter-spacing: 0.06em;
 }
 
-.rationale {
-  font-size: 0.78rem;
-  color: #666;
-  line-height: 1.6;
-  border-left: 2px solid var(--border);
-  padding-left: 0.75rem;
-}
-
 /* ── strategy ── */
-#strategy-section { max-width: 680px; }
+#strategy-section { max-width: 680px; margin: 0 auto; }
 
 .strategy-label {
   font-family: var(--mono);

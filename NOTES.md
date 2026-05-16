@@ -52,6 +52,14 @@ Round 0 generates A and B from the identical prompt with no jitter. In practice,
 
 ---
 
+## Claude defaults to the original prompt's scene when generating new scenes
+
+When asked to place a subject in a "completely new scene," Claude kept reverting to settings pulled directly from the original user prompt — even when the user had already moved through several different scenes. The original prompt is always present in the request context, and when it's long and visually specific, Claude treats that description as a strong prior and gravitates back to it, especially on later rounds when the instruction history is thin.
+
+The fix was blunt: explicitly tell Claude in every request not to reuse scenes or environments from the original prompt. It worked, but it's a prompt-level patch over a model behaviour — Claude doesn't inherently understand "you already showed the user this; try something different." Session history helps (we now pass all previous instructions), but the original prompt anchor is persistent enough that you have to call it out directly.
+
+---
+
 ## `image_ref` weight field — not yet probed
 
 The agents API docs only list `url` / `data` / `media_type` on `image_ref` entries. The old Dream Machine API had a `weight` field. We never confirmed whether the new API accepts it. `IMAGE_REF_WEIGHT` is left `None` in config; conditioning strength is prompt-only for now.

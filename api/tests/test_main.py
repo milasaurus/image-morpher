@@ -19,13 +19,12 @@ async def test_round_0_returns_two_images():
     assert resp.status_code == 200
     body = resp.json()
     assert body["images"] == ["https://cdn.luma.com/a.png", "https://cdn.luma.com/b.png"]
-    assert body["rationale"] is None
     assert body["strategy"] is None
     assert mock_gen.call_count == 2
 
 
 async def test_round_n_calls_write_instruction_with_strategy():
-    choice = WrittenInstruction(rationale="B is moodier", instruction="a typewriter in moodier light")
+    choice = WrittenInstruction(instruction="a typewriter in moodier light")
     with patch("app.main.write_instruction", new_callable=AsyncMock, return_value=choice), \
          patch("app.main.edit", new_callable=AsyncMock, return_value="https://cdn.luma.com/new.png"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
@@ -39,13 +38,12 @@ async def test_round_n_calls_write_instruction_with_strategy():
     assert resp.status_code == 200
     body = resp.json()
     assert body["images"] == ["https://cdn.luma.com/new.png"]
-    assert body["rationale"] == "B is moodier"
     assert body["strategy"] == "tweak"
 
 
 @pytest.mark.parametrize("strategy", ["preserve_look", "preserve_subject", "tweak"])
 async def test_round_n_passes_each_strategy_to_write_instruction(strategy: str):
-    choice = WrittenInstruction(rationale="B won", instruction="next prompt")
+    choice = WrittenInstruction(instruction="next prompt")
     with patch("app.main.write_instruction", new_callable=AsyncMock, return_value=choice) as mock_wi, \
          patch("app.main.edit", new_callable=AsyncMock, return_value="https://cdn.luma.com/new.png"):
         async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
@@ -84,7 +82,7 @@ async def test_generation_failed_returns_502():
 
 
 async def test_round_n_generation_failed_returns_502():
-    choice = WrittenInstruction(rationale="B won", instruction="next prompt")
+    choice = WrittenInstruction(instruction="next prompt")
     with patch("app.main.write_instruction", new_callable=AsyncMock, return_value=choice), \
          patch("app.main.edit", new_callable=AsyncMock,
                side_effect=GenerationFailed("timeout on anchor")):
