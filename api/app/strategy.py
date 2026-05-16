@@ -34,7 +34,7 @@ async def _fetch_b64(url: str) -> tuple[str, str]:
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
         return base64.standard_b64encode(buf.getvalue()).decode(), "image/jpeg"
-    return await asyncio.get_event_loop().run_in_executor(None, _fetch)
+    return await asyncio.get_running_loop().run_in_executor(None, _fetch)
 
 _SYSTEM_PROMPT = """\
 You write image edit instructions for Luma UNI-1. The user picked image B over image A.

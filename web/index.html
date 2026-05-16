@@ -248,7 +248,6 @@
         const written = await post('/api/write-instruction', {
           prompt,
           winner_url: pendingWinner,
-          runner_up_url: pendingRunnerUp,
           strategy,
         });
         instruction = written.instruction;
