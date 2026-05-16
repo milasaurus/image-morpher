@@ -12,6 +12,9 @@ Image morpher removes the switch. Pick the better image each round; Claude looks
 ## New Subject Same Look Strategy
 <img width="1127" height="679" alt="image" src="https://github.com/user-attachments/assets/76d976a2-ea65-4887-a63c-ee80007e08f8" />
 
+Example Claude Generated Prompt
+<img width="1082" height="182" alt="image" src="https://github.com/user-attachments/assets/6163bd01-a4d1-46a3-b208-04e9af9cacfb" />
+
 ---
 ## Setup
 
