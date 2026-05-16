@@ -21,7 +21,6 @@ async def test_write_instruction_returns_written_instruction():
         result = await write_instruction(
             "a vintage typewriter",
             "https://cdn.luma.com/winner.png",
-            "https://cdn.luma.com/runner_up.png",
             "tweak",
         )
 
@@ -38,7 +37,6 @@ async def test_write_instruction_passes_strategy_in_user_message():
             result = await write_instruction(
                 "a wolf howling at the moon",
                 "https://cdn.luma.com/winner.png",
-                "https://cdn.luma.com/runner_up.png",
                 strategy,
             )
 
@@ -55,7 +53,6 @@ async def test_write_instruction_raises_on_bad_json():
             await write_instruction(
                 "a prompt",
                 "https://cdn.luma.com/winner.png",
-                "https://cdn.luma.com/runner_up.png",
                 "tweak",
             )
 
@@ -69,7 +66,6 @@ async def test_write_instruction_extracts_first_json_block():
         result = await write_instruction(
             "a typewriter",
             "https://cdn.luma.com/winner.png",
-            "https://cdn.luma.com/runner_up.png",
             "tweak",
         )
 

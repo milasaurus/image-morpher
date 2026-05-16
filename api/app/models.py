@@ -33,7 +33,6 @@ class RoundResponse(BaseModel):
 class WriteInstructionRequest(BaseModel):
     prompt: str
     winner_url: str
-    runner_up_url: str
     strategy: Strategy
 
 
