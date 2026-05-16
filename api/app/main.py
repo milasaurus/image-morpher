@@ -38,7 +38,7 @@ def _error(kind: str, detail: str, status: int) -> JSONResponse:
 async def post_write_instruction(req: WriteInstructionRequest):
     try:
         choice = await write_instruction(
-            req.prompt, req.winner_url, req.runner_up_url, req.strategy
+            req.prompt, req.winner_url, req.strategy
         )
         return WriteInstructionResponse(instruction=choice.instruction, rationale=choice.rationale)
     except ValueError as exc:
@@ -75,7 +75,7 @@ async def post_round(req: RoundRequest):
             return RoundResponse(images=[a_url, b_url])
 
         choice = await write_instruction(
-            req.prompt, req.winner_url, req.runner_up_url, req.strategy
+            req.prompt, req.winner_url, req.strategy
         )
         if req.strategy == "tweak":
             new_b = await edit(req.winner_url, choice.instruction)

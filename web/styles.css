@@ -1,5 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body { overflow-x: hidden; }
+
 :root {
   --bg:       #090909;
   --surface:  #111;
@@ -175,7 +177,7 @@ textarea::placeholder { color: var(--muted); }
 }
 
 .loading-prompt-text {
-  color: #4a4a4a;
+  color: #666;
   font-size: 0.8rem;
   line-height: 1.7;
   margin: 0;
@@ -233,6 +235,19 @@ textarea::placeholder { color: var(--muted); }
   color: var(--text);
   letter-spacing: 0.03em;
 }
+
+/* done button is secondary — smaller and ghost-style */
+#done-btn {
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.4rem 1rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  margin-top: 0;
+}
+#done-btn:hover { background: none; border-color: var(--border-hi); color: var(--text); }
+#done-btn:focus-visible { outline: 2px solid var(--border-hi); outline-offset: 3px; }
 
 .image-pair {
   display: grid;
@@ -324,7 +339,7 @@ textarea::placeholder { color: var(--muted); }
 }
 
 /* ── strategy ── */
-#strategy-section { max-width: 560px; }
+#strategy-section { max-width: 680px; }
 
 .strategy-label {
   font-family: var(--mono);

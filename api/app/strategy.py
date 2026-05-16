@@ -79,13 +79,9 @@ tweak — make exactly one focused improvement. Identify the single most impactf
 async def write_instruction(
     prompt: str,
     winner_url: str,
-    runner_up_url: str,
     strategy: Strategy,
 ) -> WrittenInstruction:
-    (winner_b64, winner_mime), (runner_up_b64, runner_up_mime) = await asyncio.gather(
-        _fetch_b64(winner_url),
-        _fetch_b64(runner_up_url),
-    )
+    winner_b64, winner_mime = await _fetch_b64(winner_url)
 
     msg = await _client.messages.create(
         model=settings.ANTHROPIC_MODEL,
@@ -97,10 +93,8 @@ async def write_instruction(
                 "content": [
                     {
                         "type": "text",
-                        "text": f"Original prompt: {prompt!r}\nStrategy: {strategy}\n\nImage A (the runner-up):",
+                        "text": f"Original prompt: {prompt!r}\nStrategy: {strategy}\n\nImage B (the winner):",
                     },
-                    {"type": "image", "source": {"type": "base64", "media_type": runner_up_mime, "data": runner_up_b64}},
-                    {"type": "text", "text": "Image B (the winner):"},
                     {"type": "image", "source": {"type": "base64", "media_type": winner_mime, "data": winner_b64}},
                 ],
             }
