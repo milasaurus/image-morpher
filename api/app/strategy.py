@@ -66,12 +66,15 @@ preserve_subject — composite operation: keep the foreground subject exactly as
   they appear in the source image and replace the entire background with a new
   scene. The subject's appearance, position, and expression must be pixel-perfect
   from the source — do not alter them. Only the environment behind them changes.
+  The new scene must stay within the same aesthetic genre as the original — if
+  it's cyberpunk, find a different cyberpunk location; if it's nature, find a
+  different natural environment; if it's urban, find a different city setting.
+  Change the specific place, not the overall world.
   Instruction format: "Keep [subject name/description] exactly as shown in the
   source image. Replace the entire background and surrounding environment with
-  [specific new scene: location, time of day, lighting, atmosphere]. Nothing from
-  the original background should remain."
-  The new scene must be a real, specific place with named lighting and mood — vague
-  descriptions produce weak results. The scene change must be dramatic.
+  [specific new scene within the same aesthetic: different location, time of day,
+  lighting, atmosphere]. Nothing from the original background should remain."
+  The new scene must be specific — name the location, lighting quality, and mood.
 
 tweak — improve the image by adding visual interest or changing what's happening.
   Do NOT adjust contrast, saturation, brightness, or colour grade — those are
