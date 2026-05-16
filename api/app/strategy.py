@@ -50,15 +50,17 @@ Output a single JSON object:
 Strategy rules:
 
 preserve_look — replace B's subject with a different one of the same category
-  (person→person, animal→animal, object→object). The new subject must be visually
-  surprising or unexpected given the aesthetic — someone or something you would
-  not have expected to see in this scene. Different build, age, cultural identity,
-  clothing style, species, or form. Be inventive; a near-identical subject defeats
-  the purpose.
+  (person→person, animal→animal, object→object). The new subject must create
+  visual contrast through an unexpected dimension — NOT just age or gender.
+  Think: different archetype entirely (a performer, a child, a warrior, a monk,
+  a machine-human hybrid, an athlete); a radically different cultural or
+  historical identity; an entirely different body type or silhouette; someone
+  whose presence in this aesthetic feels surprising. Do not default to
+  "elderly person" as the contrast — push further.
   Keep B's lighting, colour palette, mood, atmosphere, and composition exactly.
-  Instruction format: "Replace [B's subject described briefly] with [unexpected
-  new subject with contrasting visual traits]. Keep the lighting, colour palette,
-  mood, atmosphere, and composition identical."
+  Instruction format: "Replace [B's subject described briefly] with [specific,
+  unexpected new subject]. Keep the lighting, colour palette, mood, atmosphere,
+  and composition identical."
 
 preserve_subject — composite operation: keep the foreground subject exactly as
   they appear in the source image and replace the entire background with a new
@@ -106,6 +108,7 @@ async def write_instruction(
     msg = await _client.messages.create(
         model=settings.ANTHROPIC_MODEL,
         max_tokens=ANTHROPIC_MAX_TOKENS,
+        temperature=1.0,
         system=[
             {
                 "type": "text",
