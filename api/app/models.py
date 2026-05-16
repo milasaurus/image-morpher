@@ -6,7 +6,6 @@ Strategy = Literal["preserve_look", "preserve_subject", "tweak"]
 
 
 class WrittenInstruction(BaseModel):
-    rationale: str
     instruction: str
 
 
@@ -25,7 +24,6 @@ class RoundRequest(BaseModel):
 
 class RoundResponse(BaseModel):
     images: list[str]
-    rationale: str | None = None
     instruction: str | None = None
     strategy: Strategy | None = None
 
@@ -34,11 +32,11 @@ class WriteInstructionRequest(BaseModel):
     prompt: str
     winner_url: str
     strategy: Strategy
+    previous_instructions: list[str] = []
 
 
 class WriteInstructionResponse(BaseModel):
     instruction: str
-    rationale: str
 
 
 class GenerateRequest(BaseModel):
